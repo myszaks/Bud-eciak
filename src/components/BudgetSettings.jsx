@@ -11,7 +11,7 @@ function debugLog(message, data) {
   }
 }
 
-export default function BudgetSettings({ session }) {
+export default function BudgetSettings({ session, onBudgetDeleted }) {
   const { budgetId } = useParams();
   const navigate = useNavigate();
   
@@ -234,15 +234,20 @@ export default function BudgetSettings({ session }) {
         .from("budgets")
         .delete()
         .eq("id", budgetId)
-        .eq("owner_id", session.user.id); // ✅ Dodatkowe zabezpieczenie
+        .eq("owner_id", session.user.id);
 
       if (error) throw error;
 
-      alert("Budżet został usunięty");
+      // ✅ WYWOŁAJ CALLBACK do App.jsx
+      if (onBudgetDeleted) {
+        onBudgetDeleted(budgetId);
+      }
+
+      toast.success("Budżet został usunięty");
       navigate("/");
     } catch (error) {
       console.error("Błąd usuwania budżetu:", error);
-      alert("Nie udało się usunąć budżetu: " + error.message);
+      toast.error("Nie udało się usunąć budżetu: " + error.message);
     }
   }
 
