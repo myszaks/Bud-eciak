@@ -75,9 +75,16 @@ export default function Login() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
-            className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
             required
+            minLength={6} // ✅ DODAJ: Minimalna długość
           />
+          {/* ✅ DODAJ: Informacja o wymaganiach */}
+          {isSignUp && (
+            <p className="mt-1 text-xs text-gray-500">
+              Hasło musi mieć minimum 6 znaków
+            </p>
+          )}
         </div>
 
         <button

@@ -1,26 +1,50 @@
-/* postcss-ignore-next-line */
 @tailwind base;
-/* postcss-ignore-next-line */
 @tailwind components;
-/* postcss-ignore-next-line */
 @tailwind utilities;
 
-body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
+body { 
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  /* Prevent zoom on input focus in iOS */
+  -webkit-text-size-adjust: 100%;
+}
 
-/* Animacje dla modali */
+/* Zapobiegaj zoom na iOS przy focusie inputów */
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="password"],
+  input[type="date"],
+  input[type="month"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Animacje */
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
 @keyframes slideUp {
-  from { 
+  from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(1rem);
   }
-  to { 
+  to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes shrink {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
   }
 }
 
@@ -30,4 +54,24 @@ body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvet
 
 .animate-slideUp {
   animation: slideUp 0.3s ease-out;
+}
+
+.animate-shrink {
+  animation: shrink linear forwards;
+}
+
+/* Scrollbar styling dla mobile */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: #1E1E1E;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #404040;
+    border-radius: 2px;
+  }
 }

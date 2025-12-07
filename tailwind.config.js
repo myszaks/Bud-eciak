@@ -14,6 +14,9 @@ export default {
           hover: '#383838',
           border: '#404040',
         }
+      },
+      screens: {
+        'xs': '475px',
       }
     },
   },

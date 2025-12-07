@@ -37,14 +37,11 @@ export default function CategoryAutocomplete({
   }, []);
 
   async function fetchSuggestions(searchText) {
-    // Wyczyść poprzedni timer
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
 
-    // Debouncing - czekaj 300ms
     debounceTimerRef.current = setTimeout(async () => {
-      // ✅ WALIDACJA: sprawdź czy są wymagane dane
       if (!searchText || searchText.length < 2) {
         setSuggestions([]);
         setShowSuggestions(false);
@@ -60,37 +57,31 @@ export default function CategoryAutocomplete({
       try {
         setLoading(true);
         
-        // Sanityzacja wejścia
         const sanitizedSearch = searchText.trim().slice(0, 50);
-
-        const tableName = type === "expense" ? "expenses" : "income";
-        const fieldName = type === "expense" ? "category" : "type";
-
+        
+        const table = type === "expense" ? "expenses" : "income";
+        
         const { data, error } = await supabase
-          .from(tableName)
-          .select(fieldName)
+          .from(table)
+          .select("category")
           .eq("budget_id", budgetId)
-          .ilike(fieldName, `%${sanitizedSearch}%`)
+          .not("category", "is", null)
+          .ilike("category", `%${sanitizedSearch}%`)
           .limit(10);
 
         if (error) throw error;
 
-        // ✅ WALIDACJA: sprawdź czy data istnieje
+        // ✅ DODAJ: Sprawdzenie czy data nie jest null
         if (!data) {
           setSuggestions([]);
           setShowSuggestions(false);
           return;
         }
 
-        // Usuń duplikaty i puste wartości
-        const uniqueValues = [...new Set(
-          data
-            .map((item) => item[fieldName])
-            .filter(val => val && val.trim().length > 0)
-        )];
-
-        setSuggestions(uniqueValues);
-        setShowSuggestions(uniqueValues.length > 0);
+        const uniqueCategories = [...new Set(data.map(item => item.category))];
+        
+        setSuggestions(uniqueCategories);
+        setShowSuggestions(uniqueCategories.length > 0);
       } catch (error) {
         console.error("Błąd pobierania sugestii:", error);
         setSuggestions([]);

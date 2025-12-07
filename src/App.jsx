@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { supabase } from "./lib/supabaseClient";
-import Login from "./components/Login"; // ✅ DODAJ: Import Login
+import Login from "./components/Login";
 import Navigation from "./components/Navigation";
 import Dashboard from "./components/Dashboard";
 import Expenses from "./components/Expenses";
@@ -14,6 +14,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true; // ✅ DODAJ: Flaga dla unmount
+
     async function initializeSession() {
       try {
         setLoading(true);
@@ -22,11 +24,11 @@ export default function App() {
         
         if (error) {
           console.error("Błąd pobierania sesji:", error);
-          setSession(null);
+          if (isMounted) setSession(null);
           return;
         }
 
-        setSession(currentSession);
+        if (isMounted) setSession(currentSession);
 
         if (currentSession) {
           const savedBudgetId = localStorage.getItem("selectedBudgetId");
@@ -37,7 +39,7 @@ export default function App() {
               .eq("id", savedBudgetId)
               .single();
 
-            if (!budgetError && budget) {
+            if (!budgetError && budget && isMounted) {
               if (budget.owner_id === currentSession.user.id) {
                 setSelectedBudget({ ...budget, is_owner: true });
               } else {
@@ -48,7 +50,7 @@ export default function App() {
                   .eq("user_id", currentSession.user.id)
                   .single();
 
-                if (access) {
+                if (access && isMounted) {
                   setSelectedBudget({ 
                     ...budget, 
                     is_shared: true, 
@@ -56,50 +58,53 @@ export default function App() {
                   });
                 } else {
                   localStorage.removeItem("selectedBudgetId");
-                  setSelectedBudget(null);
+                  if (isMounted) setSelectedBudget(null);
                 }
               }
             } else {
               localStorage.removeItem("selectedBudgetId");
-              setSelectedBudget(null);
+              if (isMounted) setSelectedBudget(null);
             }
           }
         }
       } catch (error) {
         console.error("Błąd inicjalizacji:", error);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
 
     initializeSession();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (!session) {
-        setSelectedBudget(null);
-        localStorage.removeItem("selectedBudgetId");
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, currentSession) => {
+        console.log("Auth state changed:", event);
+        if (isMounted) {
+          setSession(currentSession);
+          if (!currentSession) {
+            setSelectedBudget(null);
+            localStorage.removeItem("selectedBudgetId");
+          }
+        }
       }
-    });
+    );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false; // ✅ Cleanup
+      authListener?.subscription?.unsubscribe();
+    };
   }, []);
 
   const handleBudgetChange = useCallback((budget) => {
-    console.log("[App] Zmiana budżetu:", budget);
+    console.log("[App] Budget changed to:", budget);
     setSelectedBudget(budget);
     if (budget?.id) {
       localStorage.setItem("selectedBudgetId", budget.id);
-    } else {
-      localStorage.removeItem("selectedBudgetId");
     }
   }, []);
 
   const handleBudgetDeleted = useCallback((deletedBudgetId) => {
-    console.log("[App] Budżet usunięty:", deletedBudgetId);
-    
+    console.log("[App] Budget deleted:", deletedBudgetId);
     if (selectedBudget?.id === deletedBudgetId) {
       setSelectedBudget(null);
       localStorage.removeItem("selectedBudgetId");
@@ -118,7 +123,7 @@ export default function App() {
   }
 
   if (!session) {
-    return <Login />; // ✅ ZMIEŃ: Auth na Login
+    return <Login />;
   }
 
   return (
@@ -131,6 +136,7 @@ export default function App() {
             onBudgetChange={handleBudgetChange}
             onBudgetDeleted={handleBudgetDeleted}
           />
+
           <main className="mt-6">
             <Routes>
               <Route path="/" element={<Dashboard session={session} budget={selectedBudget} />} />
@@ -140,7 +146,9 @@ export default function App() {
                 path="/budget/:budgetId/settings" 
                 element={
                   <BudgetSettings 
-                    session={session} 
+                    session={session}
+                    selectedBudget={selectedBudget} // ✅ DODAJ
+                    onBudgetChange={handleBudgetChange} // ✅ DODAJ
                     onBudgetDeleted={handleBudgetDeleted}
                   />
                 } 
