@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { supabase } from "./lib/supabaseClient";
-import Auth from "./components/Auth";
-import Navigation from "./components/Navigation"; // ✅ ZMIANA: Navigation zamiast Navbar
+import Login from "./components/Login"; // ✅ DODAJ: Import Login
+import Navigation from "./components/Navigation";
 import Dashboard from "./components/Dashboard";
 import Expenses from "./components/Expenses";
 import Income from "./components/Income";
@@ -118,7 +118,7 @@ export default function App() {
   }
 
   if (!session) {
-    return <Auth />;
+    return <Login />; // ✅ ZMIEŃ: Auth na Login
   }
 
   return (
