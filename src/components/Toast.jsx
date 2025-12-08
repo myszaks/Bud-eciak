@@ -41,7 +41,7 @@ export default function Toast({ message, type = "info", onClose, duration = 4000
 
   return (
     <div
-      className={`fixed bottom-4 right-4 z-[9999] max-w-md w-full mx-4 md:mx-0 animate-slideUp ${styles[type]} border rounded-lg shadow-2xl backdrop-blur-sm`}
+      className={`max-w-md w-full animate-slideUp ${styles[type]} border rounded-lg shadow-2xl backdrop-blur-sm`}
     >
       <div className="flex items-start gap-3 p-4">
         <div className="flex-shrink-0">{icons[type]}</div>

@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
-import { useToast } from "../hooks/useToast";
+import { useToast } from "../contexts/ToastContext";
 
 export default function BudgetSettings({ session, selectedBudget, onBudgetChange, onBudgetDeleted }) {
   const { budgetId } = useParams();
@@ -12,27 +12,29 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
   const [shares, setShares] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // State dla edycji
+  const [editMode, setEditMode] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editMode, setEditMode] = useState(false);
-  
-  const [shareEmail, setShareEmail] = useState("");
-  const [shareAccessLevel, setShareAccessLevel] = useState("view");
-  const [shareLoading, setShareLoading] = useState(false);
 
-  const [changingPermission, setChangingPermission] = useState(null);
-  const [showPermissionModal, setShowPermissionModal] = useState(false);
-  
-  // ✅ NOWE: Modalne okna
-  const [showDeleteBudgetModal, setShowDeleteBudgetModal] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  // State dla udostępniania
+  const [shareEmail, setShareEmail] = useState("");
+  const [shareLevel, setShareLevel] = useState("view");
+  const [sharing, setSharing] = useState(false);
+
+  // State dla modali
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [showRemoveShareModal, setShowRemoveShareModal] = useState(false);
   const [shareToRemove, setShareToRemove] = useState(null);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [changingPermission, setChangingPermission] = useState(null);
 
   // Fetch shares
   async function fetchShares() {
-    if (!budgetId) return;
+    if (!budgetId || isDeleting) return;
     
     try {
       const { data: sharesData, error: sharesError } = await supabase
@@ -83,6 +85,8 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
 
   // Fetch budget data
   const fetchBudgetData = useCallback(async () => {
+    if (isDeleting) return;
+    
     try {
       setLoading(true);
       setError(null);
@@ -147,16 +151,16 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
       }
 
       await fetchShares();
-    } catch (error) {
-      console.error("Błąd pobierania danych budżetu:", error);
-      setError(error.message);
+    } catch (err) {
+      console.error("Błąd pobierania danych budżetu:", err);
+      setError(err.message);
       
-      if (error.message.includes("znaleziony")) {
+      if (err.message.includes("znaleziony")) {
         toast.error("Nie znaleziono budżetu");
-      } else if (error.message.includes("uprawnień")) {
-        toast.error(error.message);
-      } else if (error.message.includes("Nieprawidłowy")) {
-        toast.error(error.message);
+      } else if (err.message.includes("uprawnień")) {
+        toast.error(err.message);
+      } else if (err.message.includes("Nieprawidłowy")) {
+        toast.error(err.message);
       } else {
         toast.error("Nie udało się załadować budżetu");
       }
@@ -165,7 +169,7 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
     } finally {
       setLoading(false);
     }
-  }, [budgetId, session?.user?.id, selectedBudget, onBudgetChange, navigate]);
+  }, [budgetId, session?.user?.id, selectedBudget, onBudgetChange, navigate, isDeleting]);
 
   useEffect(() => {
     if (selectedBudget?.id && selectedBudget.id !== budgetId) {
@@ -175,10 +179,10 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
   }, [selectedBudget?.id, budgetId, navigate]);
 
   useEffect(() => {
-    if (budgetId && session?.user?.id) {
+    if (budgetId && session?.user?.id && !isDeleting) {
       fetchBudgetData();
     }
-  }, [budgetId, session?.user?.id]);
+  }, [budgetId, session?.user?.id, fetchBudgetData, isDeleting]);
 
   async function updateBudget(e) {
     e.preventDefault();
@@ -236,14 +240,15 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
     }
   }
 
-  // ✅ NOWA FUNKCJA: Usuwanie budżetu z modalem
   async function handleDeleteBudget() {
-    if (deleteConfirmText !== budget.name) {
-      toast.warning("Nieprawidłowe potwierdzenie");
+    if (deleteConfirmation !== budget.name) {
+      toast.error("Nieprawidłowe potwierdzenie");
       return;
     }
 
     try {
+      setIsDeleting(true);
+      
       const { error } = await supabase
         .from("budgets")
         .delete()
@@ -252,17 +257,20 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
 
       if (error) throw error;
 
+      setShowDeleteModal(false);
+      setDeleteConfirmation("");
+      
       if (onBudgetDeleted) {
         onBudgetDeleted(budgetId);
       }
       
-      setShowDeleteBudgetModal(false);
-      setDeleteConfirmText("");
       toast.success("Budżet został usunięty");
       navigate("/");
+      
     } catch (error) {
       console.error("Błąd usuwania budżetu:", error);
       toast.error("Nie udało się usunąć budżetu: " + error.message);
+      setIsDeleting(false);
     }
   }
 
@@ -277,7 +285,7 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
       return;
     }
 
-    setShareLoading(true);
+    setSharing(true);
     try {
       const { data: emailExists, error: checkError } = await supabase
         .rpc("check_email_exists", { email_input: trimmedEmail });
@@ -326,25 +334,24 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
           {
             budget_id: budgetId,
             user_id: userId,
-            access_level: shareAccessLevel,
+            access_level: shareLevel,
           },
         ]);
 
       if (shareError) throw shareError;
 
       setShareEmail("");
-      setShareAccessLevel("view");
+      setShareLevel("view");
       await fetchShares();
       toast.success(`Budżet został udostępniony użytkownikowi ${trimmedEmail}!`);
     } catch (error) {
       console.error("Błąd udostępniania budżetu:", error);
       toast.error("Nie udało się udostępnić budżetu: " + error.message);
     } finally {
-      setShareLoading(false);
+      setSharing(false);
     }
   }
 
-  // ✅ NOWA FUNKCJA: Usuwanie udostępnienia z modalem
   function requestRemoveShare(share) {
     setShareToRemove(share);
     setShowRemoveShareModal(true);
@@ -400,11 +407,22 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
     }
   }
 
+  if (isDeleting) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-400">Usuwanie budżetu...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
           <p className="text-gray-400">Ładowanie ustawień budżetu...</p>
         </div>
       </div>
@@ -414,19 +432,21 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
   if (error || !budget) {
     return (
       <div className="max-w-4xl mx-auto">
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 text-center">
-          <svg className="w-16 h-16 mx-auto mb-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <h2 className="text-xl font-medium text-red-400 mb-2">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-8 text-center">
+          <div className="w-16 h-16 bg-red-500/20 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-red-400 mb-3">
             Nie można załadować budżetu
           </h2>
-          <p className="text-gray-400 mb-4">
+          <p className="text-gray-400 mb-6">
             {error || "Budżet nie został znaleziony lub nie masz do niego dostępu."}
           </p>
           <button
             onClick={() => navigate("/")}
-            className="bg-blue-600 text-white py-2 px-6 rounded-lg hover:bg-blue-700 transition-colors"
+            className="bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-6 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all font-medium shadow-lg shadow-blue-500/30"
           >
             Wróć do listy budżetów
           </button>
@@ -435,71 +455,77 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
     );
   }
 
+  const isOwner = budget.owner_id === session.user.id;
+
   return (
-    <div className="space-y-4 md:space-y-6 max-w-4xl mx-auto px-2 sm:px-0">
-      {/* Nagłówek */}
-      <div className="flex items-center gap-2 md:gap-4">
-        <button
-          onClick={() => navigate("/")}
-          className="p-2 hover:bg-dark-hover rounded-lg transition-colors"
-        >
-          <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+    <div className="space-y-6 max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-        </button>
-        <h1 className="text-xl md:text-2xl font-bold">Ustawienia budżetu</h1>
+        </div>
+        <div>
+          <h1 className="text-3xl font-bold text-white">Ustawienia budżetu</h1>
+          <p className="text-gray-400 text-sm">{budget.name}</p>
+        </div>
       </div>
 
-      {/* Karta budżetu */}
-      <div className="bg-dark-surface rounded-lg p-4 md:p-6 border border-dark-border">
-        {!editMode ? (
-          <div>
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 md:gap-4 mb-4">
-              <div className="min-w-0">
-                <h2 className="text-lg md:text-xl font-bold mb-2 break-words">{budget.name}</h2>
-                {budget.description && (
-                  <p className="text-sm md:text-base text-gray-400 break-words">{budget.description}</p>
-                )}
-              </div>
-              {budget.owner_id === session.user.id && (
-                <button
-                  onClick={() => setEditMode(true)}
-                  className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-sm md:text-base whitespace-nowrap"
-                >
-                  Edytuj
-                </button>
-              )}
+      {/* Podstawowe informacje */}
+      <div className="bg-dark-surface border border-dark-border rounded-xl p-6 shadow-lg">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+              <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
             </div>
+            <h2 className="text-xl font-bold text-white">Podstawowe informacje</h2>
           </div>
-        ) : (
-          <form onSubmit={updateBudget} className="space-y-3 md:space-y-4">
+          {isOwner && !editMode && (
+            <button
+              onClick={() => setEditMode(true)}
+              className="text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edytuj
+            </button>
+          )}
+        </div>
+
+        {editMode ? (
+          <form onSubmit={updateBudget} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">
-                Nazwa budżetu
+                Nazwa budżetu *
               </label>
               <input
                 type="text"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="w-full px-3 md:px-4 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-blue-500"
+                className="w-full px-4 py-2.5 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                 required
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">
-                Opis
+                Opis (opcjonalnie)
               </label>
               <textarea
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
                 rows="3"
-                className="w-full px-3 md:px-4 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-blue-500 resize-none"
+                className="w-full px-4 py-2.5 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-none transition-all"
               />
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
+            <div className="flex gap-3">
               <button
                 type="submit"
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-sm md:text-base"
+                className="bg-gradient-to-r from-blue-500 to-blue-600 text-white py-2.5 px-6 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all font-medium shadow-lg shadow-blue-500/30"
               >
                 Zapisz
               </button>
@@ -510,81 +536,154 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
                   setEditName(budget.name);
                   setEditDescription(budget.description || "");
                 }}
-                className="flex-1 px-4 py-2 bg-dark-border hover:bg-dark-hover rounded-lg transition-colors text-sm md:text-base"
+                className="bg-dark-border text-white py-2.5 px-6 rounded-lg hover:bg-dark-hover transition-colors font-medium"
               >
                 Anuluj
               </button>
             </div>
           </form>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm text-gray-400 mb-1">Nazwa</p>
+              <p className="text-white font-medium">{budget.name}</p>
+            </div>
+            {budget.description && (
+              <div>
+                <p className="text-sm text-gray-400 mb-1">Opis</p>
+                <p className="text-white">{budget.description}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-sm text-gray-400 mb-1">Utworzono</p>
+              <p className="text-white">
+                {new Date(budget.created_at).toLocaleDateString("pl-PL", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </p>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Udostępnianie */}
-      {budget.owner_id === session.user.id && (
-        <>
-          <div className="bg-dark-surface rounded-lg p-4 md:p-6 border border-dark-border">
-            <h3 className="text-base md:text-lg font-bold mb-3 md:mb-4">Udostępnij budżet</h3>
-            <form onSubmit={shareBudget} className="space-y-3 md:space-y-4">
-              <div className="flex flex-col md:flex-row gap-3 md:gap-4">
-                <div className="flex-1">
-                  <input
-                    type="email"
-                    value={shareEmail}
-                    onChange={(e) => setShareEmail(e.target.value)}
-                    placeholder="Adres email użytkownika"
-                    className="w-full px-3 md:px-4 py-2 bg-dark-card border border-dark-border rounded-lg text-white text-sm md:text-base focus:outline-none focus:border-blue-500"
-                    required
-                  />
-                </div>
-                <div className="w-full md:w-auto">
+      {/* Udostępnianie - tylko dla właścicieli */}
+      {isOwner && (
+        <div className="bg-dark-surface border border-dark-border rounded-xl p-6 shadow-lg">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
+              <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-white">Udostępnianie</h2>
+          </div>
+
+          <form onSubmit={shareBudget} className="space-y-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-400 mb-2">
+                  Email użytkownika
+                </label>
+                <input
+                  type="email"
+                  value={shareEmail}
+                  onChange={(e) => setShareEmail(e.target.value)}
+                  placeholder="uzytkownik@example.com"
+                  className="w-full px-4 py-2.5 bg-dark-card border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">
+                  Uprawnienia
+                </label>
+                <div className="relative">
                   <select
-                    value={shareAccessLevel}
-                    onChange={(e) => setShareAccessLevel(e.target.value)}
-                    className="w-full px-3 md:px-4 py-2 bg-dark-card border border-dark-border rounded-lg text-white text-sm md:text-base focus:outline-none focus:border-blue-500"
+                    value={shareLevel}
+                    onChange={(e) => setShareLevel(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all appearance-none cursor-pointer"
                   >
-                    <option value="view">Widok</option>
+                    <option value="view">Podgląd</option>
                     <option value="edit">Edycja</option>
                   </select>
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                 </div>
               </div>
-              <button
-                type="submit"
-                disabled={shareLoading}
-                className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 text-sm md:text-base"
-              >
-                {shareLoading ? "Udostępnianie..." : "Udostępnij"}
-              </button>
-            </form>
-          </div>
+            </div>
+            <button
+              type="submit"
+              disabled={sharing}
+              className="bg-gradient-to-r from-green-500 to-green-600 text-white py-2.5 px-6 rounded-lg hover:from-green-600 hover:to-green-700 transition-all font-medium shadow-lg shadow-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {sharing ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                  Udostępnianie...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Udostępnij
+                </>
+              )}
+            </button>
+          </form>
 
           {/* Lista udostępnień */}
           {shares.length > 0 && (
-            <div className="bg-dark-surface rounded-lg p-4 md:p-6 border border-dark-border">
-              <h3 className="text-base md:text-lg font-bold mb-3 md:mb-4">Udostępniono dla:</h3>
-              <div className="space-y-2 md:space-y-3">
+            <div>
+              <h3 className="text-sm font-medium text-gray-400 mb-3">
+                Udostępniono dla ({shares.length})
+              </h3>
+              <div className="space-y-2">
                 {shares.map((share) => (
                   <div
                     key={share.id}
-                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 md:p-4 bg-dark-card rounded-lg"
+                    className="flex items-center justify-between p-4 bg-dark-card border border-dark-border rounded-lg"
                   >
-                    <div className="min-w-0">
-                      <p className="font-medium text-sm md:text-base break-words">{share.user_email}</p>
-                      <p className="text-xs md:text-sm text-gray-400">
-                        Poziom dostępu: {share.access_level === "edit" ? "Edycja" : "Widok"}
-                      </p>
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-white truncate">
+                          {share.user_email}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Udostępniono{" "}
+                          {new Date(share.created_at).toLocaleDateString("pl-PL")}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={() => requestPermissionChange(share.id, share.access_level)}
-                        className="flex-1 sm:flex-none px-3 py-1.5 text-xs md:text-sm bg-blue-600 hover:bg-blue-700 rounded transition-colors whitespace-nowrap"
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                          share.access_level === "edit"
+                            ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                            : "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
+                        }`}
                       >
-                        Zmień uprawnienia
+                        {share.access_level === "edit" ? "Edycja" : "Podgląd"}
                       </button>
                       <button
                         onClick={() => requestRemoveShare(share)}
-                        className="flex-1 sm:flex-none px-3 py-1.5 text-xs md:text-sm bg-red-600 hover:bg-red-700 rounded transition-colors"
+                        className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                        title="Cofnij dostęp"
                       >
-                        Usuń
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                       </button>
                     </div>
                   </div>
@@ -592,75 +691,85 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
               </div>
             </div>
           )}
-        </>
-      )}
-
-      {/* Usuwanie budżetu */}
-      {budget.owner_id === session.user.id && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 md:p-6">
-          <h3 className="text-base md:text-lg font-bold text-red-400 mb-2">Strefa niebezpieczna</h3>
-          <p className="text-sm md:text-base text-gray-400 mb-4">
-            Usuń ten budżet permanentnie. Tej operacji nie można cofnąć.
-          </p>
-          <button
-            onClick={() => setShowDeleteBudgetModal(true)}
-            className="w-full sm:w-auto px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors text-sm md:text-base"
-          >
-            Usuń budżet
-          </button>
         </div>
       )}
 
-      {/* ✅ MODAL: Usuwanie budżetu */}
-      {showDeleteBudgetModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-surface border-2 border-red-500/50 rounded-xl p-6 w-full max-w-md shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+      {/* Strefa niebezpieczna - tylko dla właścicieli */}
+      {isOwner && (
+        <div className="bg-dark-surface border border-red-500/30 rounded-xl p-6 shadow-lg">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center">
+              <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-red-400">Strefa niebezpieczna</h2>
+              <p className="text-sm text-gray-400">Nieodwracalne operacje</p>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+              <h3 className="font-medium text-white mb-2">Usuń budżet</h3>
+              <p className="text-sm text-gray-400 mb-4">
+                Usunięcie budżetu jest nieodwracalne. Wszystkie wydatki, wpływy i
+                udostępnienia zostaną trwale usunięte.
+              </p>
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="bg-red-500 text-white py-2.5 px-6 rounded-lg hover:bg-red-600 transition-colors font-medium flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Usuń budżet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal potwierdzenia usunięcia budżetu */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-surface border border-red-500/30 rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center">
                 <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <div>
-                <h3 className="text-xl font-bold text-white">Usuń budżet</h3>
-                <p className="text-sm text-gray-400">Ta operacja jest nieodwracalna</p>
-              </div>
+              <h2 className="text-xl font-bold text-white">Potwierdź usunięcie</h2>
             </div>
-
             <div className="mb-6">
               <p className="text-gray-300 mb-4">
-                Czy na pewno chcesz usunąć budżet <span className="font-bold text-white">"{budget.name}"</span>?
+                Ta operacja jest <strong className="text-red-400">nieodwracalna</strong>.
+                Wszystkie dane zostaną trwale usunięte.
               </p>
               <p className="text-sm text-gray-400 mb-4">
-                Wszystkie wydatki, wpływy i udostępnienia zostaną trwale usunięte.
+                Wpisz nazwę budżetu <strong className="text-white">{budget.name}</strong> aby
+                potwierdzić:
               </p>
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Wpisz nazwę budżetu aby potwierdzić: <span className="text-white font-bold">{budget.name}</span>
-                </label>
-                <input
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder={budget.name}
-                  className="w-full px-4 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
-                  autoFocus
-                />
-              </div>
+              <input
+                type="text"
+                value={deleteConfirmation}
+                onChange={(e) => setDeleteConfirmation(e.target.value)}
+                placeholder={budget.name}
+                className="w-full px-4 py-2.5 bg-dark-card border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
+              />
             </div>
-
             <div className="flex gap-3">
               <button
                 onClick={handleDeleteBudget}
-                disabled={deleteConfirmText !== budget.name}
-                className="flex-1 bg-red-600 text-white py-2.5 px-4 rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={deleteConfirmation !== budget.name}
+                className="flex-1 bg-red-500 text-white py-2.5 px-4 rounded-lg hover:bg-red-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Usuń budżet
               </button>
               <button
                 onClick={() => {
-                  setShowDeleteBudgetModal(false);
-                  setDeleteConfirmText("");
+                  setShowDeleteModal(false);
+                  setDeleteConfirmation("");
                 }}
                 className="flex-1 bg-dark-border text-white py-2.5 px-4 rounded-lg hover:bg-dark-hover transition-colors font-medium"
               >
@@ -671,31 +780,26 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
         </div>
       )}
 
-      {/* ✅ MODAL: Usuwanie udostępnienia */}
+      {/* Modal potwierdzenia usunięcia udostępnienia */}
       {showRemoveShareModal && shareToRemove && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-dark-surface border border-dark-border rounded-xl p-6 w-full max-w-md shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-orange-500/20 rounded-full flex items-center justify-center flex-shrink-0">
-                <svg className="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <div>
-                <h3 className="text-xl font-bold text-white">Cofnij dostęp</h3>
-                <p className="text-sm text-gray-400">Potwierdzenie wymagane</p>
-              </div>
+              <h2 className="text-xl font-bold text-white">Cofnij dostęp</h2>
             </div>
-
             <p className="text-gray-300 mb-6">
-              Czy na pewno chcesz cofnąć dostęp dla użytkownika{" "}
-              <span className="font-bold text-white">{shareToRemove.user_email}</span>?
+              Czy na pewno chcesz cofnąć dostęp użytkownikowi{" "}
+              <strong className="text-white">{shareToRemove.user_email}</strong>?
             </p>
-
             <div className="flex gap-3">
               <button
                 onClick={confirmRemoveShare}
-                className="flex-1 bg-orange-600 text-white py-2.5 px-4 rounded-lg hover:bg-orange-700 transition-colors font-medium"
+                className="flex-1 bg-red-500 text-white py-2.5 px-4 rounded-lg hover:bg-red-600 transition-colors font-medium"
               >
                 Cofnij dostęp
               </button>
@@ -713,40 +817,35 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
         </div>
       )}
 
-      {/* MODAL: Zmiana uprawnień (pozostaje bez zmian) */}
+      {/* Modal zmiany uprawnień */}
       {showPermissionModal && changingPermission && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-dark-surface border border-dark-border rounded-xl p-6 w-full max-w-md shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
                 <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                 </svg>
               </div>
-              <div>
-                <h3 className="text-xl font-bold text-white">Zmień uprawnienia</h3>
-                <p className="text-sm text-gray-400">Potwierdzenie wymagane</p>
-              </div>
+              <h2 className="text-xl font-bold text-white">Zmień uprawnienia</h2>
             </div>
-
             <p className="text-gray-300 mb-6">
-              Czy na pewno chcesz zmienić uprawnienia z{" "}
-              <span className="text-white font-bold">
-                {changingPermission.currentLevel === "edit" ? "Edycja" : "Widok"}
-              </span>{" "}
+              Zmienić uprawnienia z{" "}
+              <strong className="text-white">
+                {changingPermission.currentLevel === "view" ? "Podgląd" : "Edycja"}
+              </strong>{" "}
               na{" "}
-              <span className="text-white font-bold">
-                {changingPermission.newLevel === "edit" ? "Edycja" : "Widok"}
-              </span>
+              <strong className="text-white">
+                {changingPermission.newLevel === "view" ? "Podgląd" : "Edycja"}
+              </strong>
               ?
             </p>
-
             <div className="flex gap-3">
               <button
                 onClick={confirmPermissionChange}
-                className="flex-1 bg-blue-600 text-white py-2.5 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-2.5 px-4 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all font-medium shadow-lg shadow-blue-500/30"
               >
-                Potwierdź
+                Zmień
               </button>
               <button
                 onClick={() => {

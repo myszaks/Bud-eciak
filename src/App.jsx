@@ -7,14 +7,19 @@ import Dashboard from "./components/Dashboard";
 import Expenses from "./components/Expenses";
 import Income from "./components/Income";
 import BudgetSettings from "./components/BudgetSettings";
+import ToastContainer from "./components/ToastContainer";
+import { ToastProvider, useToast } from "./contexts/ToastContext"; // ✅ Import z contexts
+import ErrorBoundary from "./components/ErrorBoundary";
 
-export default function App() {
+function AppContent() {
   const [session, setSession] = useState(null);
   const [selectedBudget, setSelectedBudget] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [budgetRefreshTrigger, setBudgetRefreshTrigger] = useState(0);
+  const { toasts, removeToast } = useToast(); // ✅ Pobierz z contextu
 
   useEffect(() => {
-    let isMounted = true; // ✅ DODAJ: Flaga dla unmount
+    let isMounted = true;
 
     async function initializeSession() {
       try {
@@ -90,7 +95,7 @@ export default function App() {
     );
 
     return () => {
-      isMounted = false; // ✅ Cleanup
+      isMounted = false;
       authListener?.subscription?.unsubscribe();
     };
   }, []);
@@ -105,17 +110,20 @@ export default function App() {
 
   const handleBudgetDeleted = useCallback((deletedBudgetId) => {
     console.log("[App] Budget deleted:", deletedBudgetId);
+    
     if (selectedBudget?.id === deletedBudgetId) {
       setSelectedBudget(null);
       localStorage.removeItem("selectedBudgetId");
     }
+    
+    setBudgetRefreshTrigger(prev => prev + 1);
   }, [selectedBudget?.id]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-dark-bg flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
           <p className="text-gray-400">Ładowanie...</p>
         </div>
       </div>
@@ -127,37 +135,52 @@ export default function App() {
   }
 
   return (
-    <Router>
-      <div className="min-h-screen bg-dark-bg text-white">
-        <div className="container mx-auto px-4 py-6">
-          <Navigation
-            session={session}
-            selectedBudget={selectedBudget}
-            onBudgetChange={handleBudgetChange}
-            onBudgetDeleted={handleBudgetDeleted}
-          />
-
-          <main className="mt-6">
-            <Routes>
-              <Route path="/" element={<Dashboard session={session} budget={selectedBudget} />} />
-              <Route path="/expenses" element={<Expenses session={session} budget={selectedBudget} />} />
-              <Route path="/income" element={<Income session={session} budget={selectedBudget} />} />
-              <Route 
-                path="/budget/:budgetId/settings" 
-                element={
-                  <BudgetSettings 
-                    session={session}
-                    selectedBudget={selectedBudget} // ✅ DODAJ
-                    onBudgetChange={handleBudgetChange} // ✅ DODAJ
-                    onBudgetDeleted={handleBudgetDeleted}
-                  />
-                } 
+    <>
+      <Router>
+        <ErrorBoundary>
+          <div className="min-h-screen bg-dark-bg text-white">
+            <div className="container mx-auto px-4 py-6">
+              <Navigation
+                session={session}
+                selectedBudget={selectedBudget}
+                onBudgetChange={handleBudgetChange}
+                onBudgetDeleted={handleBudgetDeleted}
+                budgetRefreshTrigger={budgetRefreshTrigger}
               />
-              <Route path="*" element={<Navigate to="/" />} />
-            </Routes>
-          </main>
-        </div>
-      </div>
-    </Router>
+
+              <main className="mt-6">
+                <Routes>
+                  <Route path="/" element={<Dashboard session={session} budget={selectedBudget} />} />
+                  <Route path="/expenses" element={<Expenses session={session} budget={selectedBudget} />} />
+                  <Route path="/income" element={<Income session={session} budget={selectedBudget} />} />
+                  <Route 
+                    path="/budget/:budgetId/settings" 
+                    element={
+                      <BudgetSettings 
+                        session={session}
+                        selectedBudget={selectedBudget}
+                        onBudgetChange={handleBudgetChange}
+                        onBudgetDeleted={handleBudgetDeleted}
+                      />
+                    } 
+                  />
+                  <Route path="*" element={<Navigate to="/" />} />
+                </Routes>
+              </main>
+            </div>
+          </div>
+        </ErrorBoundary>
+      </Router>
+      
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   );
 }

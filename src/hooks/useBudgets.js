@@ -1,23 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-export function useBudgets(session) {
+export function useBudgets(session, triggerRefresh = 0) {
   const [budgets, setBudgets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (session?.user?.id) {
-      fetchBudgets();
-    } else {
-      setBudgets([]);
-      setLoading(false);
-    }
-  }, [session?.user?.id]);
-
-  async function fetchBudgets() {
+  const fetchBudgets = useCallback(async () => {
     if (!session?.user?.id) {
-      console.warn("useBudgets: brak session");
       setBudgets([]);
       setLoading(false);
       return;
@@ -25,124 +14,118 @@ export function useBudgets(session) {
 
     try {
       setLoading(true);
-      setError(null);
+      console.log("[useBudgets] Fetching budgets...");
 
-      console.log("[useBudgets] Pobieranie budżetów dla user:", session.user.id);
-
-      // 1. Pobierz budżety własne
+      // ✅ Pobierz budżety własne
       const { data: ownedBudgets, error: ownedError } = await supabase
         .from("budgets")
         .select("*")
-        .eq("owner_id", session.user.id);
+        .eq("owner_id", session.user.id)
+        .order("created_at", { ascending: false });
 
       if (ownedError) {
-        console.error("[useBudgets] Błąd pobierania własnych budżetów:", ownedError);
+        console.error("[useBudgets] Error fetching owned budgets:", ownedError);
         throw ownedError;
       }
 
-      console.log("[useBudgets] Własne budżety:", ownedBudgets);
+      console.log("[useBudgets] Owned budgets:", ownedBudgets);
 
-      // 2. Pobierz rekordy dostępu
-      const { data: accessRecords, error: accessError } = await supabase
+      // ✅ Pobierz budżety udostępnione
+      const { data: sharedAccess, error: sharedError } = await supabase
         .from("budget_access")
-        .select("budget_id, access_level")
+        .select(`
+          budget_id,
+          access_level,
+          budgets (*)
+        `)
         .eq("user_id", session.user.id);
 
-      if (accessError) {
-        console.error("[useBudgets] Błąd pobierania dostępów:", accessError);
-        throw accessError;
+      if (sharedError) {
+        console.error("[useBudgets] Error fetching shared budgets:", sharedError);
       }
 
-      console.log("[useBudgets] Rekordy dostępu:", accessRecords);
+      console.log("[useBudgets] Shared access:", sharedAccess);
 
-      // 3. Pobierz udostępnione budżety
-      let sharedBudgets = [];
-      if (accessRecords && accessRecords.length > 0) {
-        const sharedBudgetIds = accessRecords.map(a => a.budget_id);
-        
-        console.log("[useBudgets] IDs udostępnionych budżetów:", sharedBudgetIds);
+      const sharedBudgets = (sharedAccess || [])
+        .filter(access => access.budgets) // ✅ Filtruj null budgets
+        .map((access) => ({
+          ...access.budgets,
+          is_shared: true,
+          access_level: access.access_level,
+        }));
 
-        const { data: budgetsData, error: budgetsError } = await supabase
-          .from("budgets")
-          .select("*")
-          .in("id", sharedBudgetIds);
+      const ownedWithFlag = (ownedBudgets || []).map((b) => ({
+        ...b,
+        is_owner: true,
+      }));
 
-        if (budgetsError) {
-          console.error("[useBudgets] Błąd pobierania udostępnionych budżetów:", budgetsError);
-          throw budgetsError;
-        }
+      const allBudgets = [...ownedWithFlag, ...sharedBudgets].sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at)
+      );
 
-        console.log("[useBudgets] Udostępnione budżety:", budgetsData);
-
-        // Dodaj informacje o poziomie dostępu
-        sharedBudgets = budgetsData.map(budget => {
-          const access = accessRecords.find(a => a.budget_id === budget.id);
-          return {
-            ...budget,
-            access_level: access?.access_level || "view",
-            is_shared: true,
-          };
-        });
-      }
-
-      // 4. Połącz wszystkie budżety
-      const allBudgets = [
-        ...ownedBudgets.map(b => ({ ...b, is_owner: true })),
-        ...sharedBudgets,
-      ];
-
-      console.log("[useBudgets] Wszystkie budżety:", allBudgets);
-
+      console.log("[useBudgets] All budgets:", allBudgets);
       setBudgets(allBudgets);
-    } catch (err) {
-      console.error("[useBudgets] Błąd pobierania budżetów:", err);
-      setError(err.message || "Nie udało się pobrać budżetów");
+    } catch (error) {
+      console.error("Błąd pobierania budżetów:", error);
       setBudgets([]);
     } finally {
       setLoading(false);
     }
-  }
+  }, [session?.user?.id, triggerRefresh]); // ✅ Dodaj triggerRefresh do dependencies
 
-  async function createBudget(name, description) {
-    if (!session?.user?.id) {
-      throw new Error("Nie jesteś zalogowany");
+  useEffect(() => {
+    fetchBudgets();
+  }, [fetchBudgets]);
+
+  const createBudget = async (name, description) => {
+    if (!session?.user?.id) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from("budgets")
+        .insert([{ 
+          name, 
+          description: description || null,
+          owner_id: session.user.id 
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await fetchBudgets();
+
+      return { ...data, is_owner: true };
+    } catch (error) {
+      console.error("Błąd tworzenia budżetu:", error);
+      throw error;
     }
+  };
 
-    const { data, error } = await supabase
-      .from("budgets")
-      .insert([
-        {
-          owner_id: session.user.id,
-          name: name.trim(),
-          description: description?.trim() || null,
-        },
-      ])
-      .select()
-      .single();
+  const deleteBudget = async (budgetId) => {
+    if (!session?.user?.id) return;
 
-    if (error) throw error;
+    try {
+      const { error } = await supabase
+        .from("budgets")
+        .delete()
+        .eq("id", budgetId)
+        .eq("owner_id", session.user.id);
 
-    // Odśwież listę budżetów
-    await fetchBudgets();
-    return data;
-  }
+      if (error) throw error;
 
-  async function deleteBudget(budgetId) {
-    if (!session?.user?.id) {
-      throw new Error("Nie jesteś zalogowany");
+      await fetchBudgets();
+    } catch (error) {
+      console.error("Błąd usuwania budżetu:", error);
+      throw error;
     }
+  };
 
-    const { error } = await supabase
-      .from("budgets")
-      .delete()
-      .eq("id", budgetId)
-      .eq("owner_id", session.user.id);
-
-    if (error) throw error;
-
-    // Odśwież listę budżetów
-    await fetchBudgets();
-  }
-
-  return { budgets, loading, error, createBudget, deleteBudget, refetch: fetchBudgets };
+  return {
+    budgets,
+    loading,
+    createBudget,
+    deleteBudget,
+    refreshBudgets: fetchBudgets,
+  };
 }
