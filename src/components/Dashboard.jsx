@@ -1,95 +1,195 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
-import { LoadingScreen } from "./LoadingSpinner"; // ✅ DODAJ
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from "recharts";
+import { LoadingScreen } from "./LoadingSpinner";
 import { useToast } from "../contexts/ToastContext";
+
+const COLORS = [
+  "#3B82F6",
+  "#10B981",
+  "#F59E0B",
+  "#EF4444",
+  "#8B5CF6",
+  "#EC4899",
+  "#14B8A6",
+  "#F97316",
+  "#6366F1",
+  "#84CC16",
+];
+
+const CustomLegend = ({ payload }) => {
+  return (
+    <div className="mt-6 space-y-2 max-h-48 overflow-y-auto pr-2">
+      {payload.map((entry, index) => (
+        <div
+          key={`legend-${index}`}
+          className="flex items-center justify-between gap-3 p-2 bg-dark-card/50 rounded-lg hover:bg-dark-card transition-colors"
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div
+              className="w-3 h-3 rounded-full flex-shrink-0"
+              style={{ backgroundColor: entry.color }}
+            />
+            <span className="text-gray-300 text-sm truncate">
+              {entry.value}
+            </span>
+          </div>
+          <span className="text-gray-400 text-xs font-medium flex-shrink-0">
+            {entry.payload.percent
+              ? `${(entry.payload.percent * 100).toFixed(1)}%`
+              : "0%"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 export default function Dashboard({ session, budget }) {
   const navigate = useNavigate();
   const toast = useToast();
-  const [stats, setStats] = useState({
-    totalExpenses: 0,
-    totalIncome: 0,
-    balance: 0,
-    expensesCount: 0,
-    incomeCount: 0,
-  });
+  const [expenses, setExpenses] = useState([]);
+  const [income, setIncome] = useState([]);
   const [recentExpenses, setRecentExpenses] = useState([]);
   const [recentIncome, setRecentIncome] = useState([]);
-  const [loading, setLoading] = useState(true); // ✅ DODAJ
+  const [loading, setLoading] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
 
-  useEffect(() => {
-    if (budget?.id) {
-      fetchDashboardData();
-    } else {
-      setStats({
-        totalExpenses: 0,
-        totalIncome: 0,
-        balance: 0,
-        expensesCount: 0,
-        incomeCount: 0,
-      });
-      setRecentExpenses([]);
-      setRecentIncome([]);
+  const fetchData = useCallback(async () => {
+    if (!budget?.id) {
       setLoading(false);
+      return;
     }
-  }, [budget?.id]);
-
-  async function fetchDashboardData() {
-    if (!budget?.id) return;
 
     try {
-      setLoading(true); // ✅ DODAJ
+      setLoading(true);
+      const startOfMonth = `${selectedMonth}-01`;
+      const endOfMonth = new Date(
+        parseInt(selectedMonth.split("-")[0]),
+        parseInt(selectedMonth.split("-")[1]),
+        0
+      )
+        .toISOString()
+        .split("T")[0];
 
-      const { data: expensesData, error: expensesError } = await supabase
-        .from("expenses")
-        .select("amount, date, category, description")
-        .eq("budget_id", budget.id)
-        .order("date", { ascending: false })
-        .limit(5);
+      // Pobierz wszystkie dane z wybranego miesiąca
+      const [expensesResponse, incomeResponse, recentExpensesResponse, recentIncomeResponse] = await Promise.all([
+        supabase
+          .from("expenses")
+          .select("*")
+          .eq("budget_id", budget.id)
+          .gte("date", startOfMonth)
+          .lte("date", endOfMonth)
+          .order("date", { ascending: false }),
+        supabase
+          .from("income")
+          .select("*")
+          .eq("budget_id", budget.id)
+          .gte("date", startOfMonth)
+          .lte("date", endOfMonth)
+          .order("date", { ascending: false }),
+        supabase
+          .from("expenses")
+          .select("*")
+          .eq("budget_id", budget.id)
+          .order("date", { ascending: false })
+          .limit(5),
+        supabase
+          .from("income")
+          .select("*")
+          .eq("budget_id", budget.id)
+          .order("date", { ascending: false })
+          .limit(5),
+      ]);
 
-      if (expensesError) throw expensesError;
+      if (expensesResponse.error) throw expensesResponse.error;
+      if (incomeResponse.error) throw incomeResponse.error;
+      if (recentExpensesResponse.error) throw recentExpensesResponse.error;
+      if (recentIncomeResponse.error) throw recentIncomeResponse.error;
 
-      const { data: incomeData, error: incomeError } = await supabase
-        .from("income")
-        .select("amount, date, source, description")
-        .eq("budget_id", budget.id)
-        .order("date", { ascending: false })
-        .limit(5);
-
-      if (incomeError) throw incomeError;
-
-      const { data: allExpenses } = await supabase
-        .from("expenses")
-        .select("amount")
-        .eq("budget_id", budget.id);
-
-      const { data: allIncome } = await supabase
-        .from("income")
-        .select("amount")
-        .eq("budget_id", budget.id);
-
-      const totalExpenses =
-        allExpenses?.reduce((sum, exp) => sum + parseFloat(exp.amount), 0) || 0;
-      const totalIncome =
-        allIncome?.reduce((sum, inc) => sum + parseFloat(inc.amount), 0) || 0;
-
-      setStats({
-        totalExpenses,
-        totalIncome,
-        balance: totalIncome - totalExpenses,
-        expensesCount: allExpenses?.length || 0,
-        incomeCount: allIncome?.length || 0,
-      });
-
-      setRecentExpenses(expensesData || []);
-      setRecentIncome(incomeData || []);
+      setExpenses(expensesResponse.data || []);
+      setIncome(incomeResponse.data || []);
+      setRecentExpenses(recentExpensesResponse.data || []);
+      setRecentIncome(recentIncomeResponse.data || []);
     } catch (error) {
-      console.error("Błąd pobierania danych dashboard:", error);
+      console.error("Błąd pobierania danych:", error);
+      toast.error("Nie udało się załadować danych dashboard");
     } finally {
-      setLoading(false); // ✅ DODAJ
+      setLoading(false);
     }
-  }
+  }, [budget?.id, selectedMonth, toast]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const stats = useMemo(() => {
+    const totalExpenses = expenses.reduce(
+      (sum, exp) => sum + parseFloat(exp.amount),
+      0
+    );
+    const totalIncome = income.reduce(
+      (sum, inc) => sum + parseFloat(inc.amount),
+      0
+    );
+    const balance = totalIncome - totalExpenses;
+
+    return {
+      totalExpenses,
+      totalIncome,
+      balance,
+      expensesCount: expenses.length,
+      incomeCount: income.length,
+    };
+  }, [expenses, income]);
+
+  const categoryData = useMemo(() => {
+    if (expenses.length === 0 || stats.totalExpenses === 0) return [];
+
+    const categoryMap = {};
+
+    expenses.forEach((expense) => {
+      const category = expense.category || "Inne";
+      if (!categoryMap[category]) {
+        categoryMap[category] = 0;
+      }
+      categoryMap[category] += parseFloat(expense.amount);
+    });
+
+    return Object.entries(categoryMap)
+      .map(([name, value]) => ({
+        name,
+        value,
+        percent: value / stats.totalExpenses,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [expenses, stats.totalExpenses]);
+
+  const comparisonData = useMemo(() => {
+    return [
+      { name: "Wpływy", value: stats.totalIncome, fill: "#10B981" },
+      { name: "Wydatki", value: stats.totalExpenses, fill: "#EF4444" },
+      {
+        name: "Bilans",
+        value: Math.abs(stats.balance),
+        fill: stats.balance >= 0 ? "#3B82F6" : "#F59E0B",
+      },
+    ];
+  }, [stats]);
 
   if (!budget) {
     return (
@@ -122,34 +222,24 @@ export default function Dashboard({ session, budget }) {
     );
   }
 
-  // ✅ DODAJ: Loading state
   if (loading) {
     return <LoadingScreen message="Ładowanie dashboard..." />;
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
-          <svg
-            className="w-7 h-7 text-white"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-            />
-          </svg>
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-          <p className="text-gray-400 text-sm">{budget.name}</p>
-        </div>
+    <div className="space-y-6">      
+
+      {/* Filtr miesiąca */}
+      <div className="bg-dark-surface rounded-lg shadow-lg border border-dark-border/50 p-4">
+        <label className="block text-sm font-medium text-gray-400 mb-2">
+          Wybierz miesiąc do analizy
+        </label>
+        <input
+          type="month"
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+          className="w-full px-4 py-2.5 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+        />
       </div>
 
       {/* Karty statystyk */}
@@ -244,6 +334,167 @@ export default function Dashboard({ session, budget }) {
         </div>
       </div>
 
+      {/* Wykresy */}
+      {(comparisonData.length > 0 || categoryData.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Porównanie wpływów i wydatków */}
+          {comparisonData.length > 0 && (
+            <div className="bg-dark-surface rounded-lg shadow-lg border border-dark-border/50 p-6">
+              <h3 className="text-lg font-bold text-white mb-6">
+                Porównanie wpływów i wydatków
+              </h3>
+
+              {/* Mobile Chart */}
+              <div className="md:hidden">
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart
+                    data={comparisonData}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 10 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="#404040"
+                      opacity={0.3}
+                    />
+                    <XAxis
+                      dataKey="name"
+                      stroke="#9CA3AF"
+                      style={{ fontSize: "10px" }}
+                    />
+                    <YAxis
+                      stroke="#9CA3AF"
+                      style={{ fontSize: "10px" }}
+                      tickFormatter={(value) => `${value}`}
+                    />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={40}>
+                      {comparisonData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Desktop Chart */}
+              <div className="hidden md:block">
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart
+                    data={comparisonData}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="#404040"
+                      opacity={0.3}
+                    />
+                    <XAxis
+                      dataKey="name"
+                      stroke="#9CA3AF"
+                      style={{ fontSize: "14px", fontWeight: 500 }}
+                    />
+                    <YAxis
+                      stroke="#9CA3AF"
+                      style={{ fontSize: "12px" }}
+                      tickFormatter={(value) => `${value} zł`}
+                    />
+                    <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={80}>
+                      {comparisonData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Wydatki według kategorii */}
+          {categoryData.length > 0 && (
+            <div className="bg-dark-surface rounded-lg shadow-lg border border-dark-border/50 p-6">
+              <h3 className="text-lg font-bold text-white mb-6">
+                Wydatki według kategorii
+              </h3>
+
+              {/* Mobile Chart - bez labeli */}
+              <div className="md:hidden">
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={categoryData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={false}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {categoryData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                          stroke="#1E1E1E"
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                {/* Custom Legend dla mobile */}
+                <CustomLegend
+                  payload={categoryData.map((entry, index) => ({
+                    value: entry.name,
+                    color: COLORS[index % COLORS.length],
+                    payload: entry,
+                  }))}
+                />
+              </div>
+
+              {/* Desktop Chart - z labelami */}
+              <div className="hidden md:block">
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={categoryData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) =>
+                        percent > 0.05
+                          ? `${name}: ${(percent * 100).toFixed(0)}%`
+                          : ""
+                      }
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                      animationBegin={0}
+                      animationDuration={500}
+                    >
+                      {categoryData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                          stroke="#1E1E1E"
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                {/* Custom Legend dla desktop */}
+                <CustomLegend
+                  payload={categoryData.map((entry, index) => ({
+                    value: entry.name,
+                    color: COLORS[index % COLORS.length],
+                    payload: entry,
+                  }))}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Ostatnie transakcje */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Ostatnie wydatki */}
@@ -313,15 +564,17 @@ export default function Dashboard({ session, budget }) {
                 >
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-white truncate">
-                      {expense.description || expense.category}
+                      {expense.name}
                     </p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs text-gray-500">
                         {new Date(expense.date).toLocaleDateString("pl-PL")}
                       </span>
-                      <span className="text-xs px-2 py-0.5 bg-dark-border rounded-full text-gray-400">
-                        {expense.category}
-                      </span>
+                      {expense.category && (
+                        <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full">
+                          {expense.category}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <p className="text-lg font-bold text-red-400 ml-4">
@@ -393,26 +646,28 @@ export default function Dashboard({ session, budget }) {
             </div>
           ) : (
             <div className="space-y-3">
-              {recentIncome.map((income, index) => (
+              {recentIncome.map((inc, index) => (
                 <div
                   key={index}
                   className="flex items-center justify-between p-4 bg-dark-card border border-dark-border rounded-lg hover:border-green-500/30 transition-all"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-white truncate">
-                      {income.description || income.source}
+                      {inc.name}
                     </p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs text-gray-500">
-                        {new Date(income.date).toLocaleDateString("pl-PL")}
+                        {new Date(inc.date).toLocaleDateString("pl-PL")}
                       </span>
-                      <span className="text-xs px-2 py-0.5 bg-dark-border rounded-full text-gray-400">
-                        {income.source}
-                      </span>
+                      {inc.category && (
+                        <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
+                          {inc.category}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <p className="text-lg font-bold text-green-400 ml-4">
-                    +{parseFloat(income.amount).toFixed(2)} zł
+                    +{parseFloat(inc.amount).toFixed(2)} zł
                   </p>
                 </div>
               ))}

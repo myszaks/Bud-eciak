@@ -32,6 +32,46 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [changingPermission, setChangingPermission] = useState(null);
 
+  // ✅ NOWE: Sprawdź czy user jest właścicielem PRZED fetchem
+  const checkOwnership = useCallback(async (budgetIdToCheck) => {
+    if (!session?.user?.id) return false;
+
+    try {
+      const { data, error } = await supabase
+        .from("budgets")
+        .select("owner_id")
+        .eq("id", budgetIdToCheck)
+        .single();
+
+      if (error || !data) return false;
+      
+      return data.owner_id === session.user.id;
+    } catch (err) {
+      return false;
+    }
+  }, [session?.user?.id]);
+
+  // ✅ ZMIENIONE: Obsługa zmiany wybranego budżetu
+  useEffect(() => {
+    // Ignoruj jeśli budżet się nie zmienił lub jeśli to jest ten sam budżet co w URL
+    if (!selectedBudget?.id || selectedBudget.id === budgetId) {
+      return;
+    }
+
+    console.log("[BudgetSettings] Wykryto zmianę budżetu z", budgetId, "na", selectedBudget.id);
+    
+    // ✅ Sprawdź czy NOWY budżet jest własnością usera
+    if (selectedBudget.is_owner) {
+      // Jesteś właścicielem NOWEGO budżetu - przekieruj do jego ustawień
+      console.log("[BudgetSettings] Przekierowanie do ustawień nowego budżetu");
+      navigate(`/budget/${selectedBudget.id}/settings`, { replace: true });
+    } else {
+      // ✅ NIE jesteś właścicielem NOWEGO budżetu - wyjdź z ustawień (zakładka zniknie)
+      console.log("[BudgetSettings] Nowy budżet nie jest Twój - powrót do Dashboard");
+      navigate("/", { replace: true });
+    }
+  }, [selectedBudget?.id, selectedBudget?.is_owner, budgetId, navigate]);
+
   // Fetch shares
   async function fetchShares() {
     if (!budgetId || isDeleting) return;
@@ -83,7 +123,7 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
     }
   }
 
-  // Fetch budget data
+  // ✅ ZMIENIONE: Fetch budget data
   const fetchBudgetData = useCallback(async () => {
     if (isDeleting) return;
     
@@ -105,6 +145,14 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
 
       console.log("[BudgetSettings] Ładowanie budżetu:", budgetId);
 
+      // ✅ Sprawdź ownership PRZED fetchem
+      const isOwner = await checkOwnership(budgetId);
+      
+      if (!isOwner) {
+        console.log("[BudgetSettings] Nie jesteś właścicielem budżetu:", budgetId);
+        throw new Error("Nie masz uprawnień do zarządzania tym budżetem");
+      }
+
       const { data: budgetData, error: budgetError } = await supabase
         .from("budgets")
         .select("*")
@@ -118,36 +166,23 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
         throw budgetError;
       }
 
-      const isOwner = budgetData.owner_id === session.user.id;
-      let hasAccess = isOwner;
-
-      if (!isOwner) {
-        const { data: access } = await supabase
-          .from("budget_access")
-          .select("access_level")
-          .eq("budget_id", budgetId)
-          .eq("user_id", session.user.id)
-          .single();
-
-        hasAccess = !!access;
-        
-        if (!hasAccess) {
-          throw new Error("Nie masz uprawnień do zarządzania tym budżetem");
-        }
-      }
-
       console.log("[BudgetSettings] Załadowano budżet:", budgetData);
       
       setBudget(budgetData);
       setEditName(budgetData.name);
       setEditDescription(budgetData.description || "");
 
+      // ✅ ZMIENIONE: Aktualizuj selectedBudget TYLKO jeśli jest null lub różny
+      // NIE wywołuj onBudgetChange jeśli to ten sam budżet (zapobiega loopowi)
       if (!selectedBudget || selectedBudget.id !== budgetData.id) {
+        console.log("[BudgetSettings] Aktualizuję selectedBudget do:", budgetData.id);
         const budgetWithPermissions = {
           ...budgetData,
-          is_owner: isOwner,
+          is_owner: true,
         };
         onBudgetChange(budgetWithPermissions);
+      } else {
+        console.log("[BudgetSettings] Pomijam aktualizację selectedBudget - ten sam budżet");
       }
 
       await fetchShares();
@@ -165,24 +200,18 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
         toast.error("Nie udało się załadować budżetu");
       }
       
-      navigate("/");
+      navigate("/", { replace: true });
     } finally {
       setLoading(false);
     }
-  }, [budgetId, session?.user?.id, selectedBudget, onBudgetChange, navigate, isDeleting]);
+  }, [budgetId, session?.user?.id, selectedBudget, onBudgetChange, navigate, isDeleting, checkOwnership, toast]);
 
-  useEffect(() => {
-    if (selectedBudget?.id && selectedBudget.id !== budgetId) {
-      console.log("[BudgetSettings] Budżet zmieniony, przekierowanie do:", selectedBudget.id);
-      navigate(`/budget/${selectedBudget.id}/settings`, { replace: true });
-    }
-  }, [selectedBudget?.id, budgetId, navigate]);
-
+  // ✅ ZMIENIONE: Fetch tylko gdy budgetId z URL się zmieni (NIE gdy selectedBudget się zmieni)
   useEffect(() => {
     if (budgetId && session?.user?.id && !isDeleting) {
       fetchBudgetData();
     }
-  }, [budgetId, session?.user?.id, fetchBudgetData, isDeleting]);
+  }, [budgetId, session?.user?.id, isDeleting]); // ✅ USUNIĘTO fetchBudgetData z dependencies
 
   async function updateBudget(e) {
     e.preventDefault();
@@ -265,7 +294,7 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
       }
       
       toast.success("Budżet został usunięty");
-      navigate("/");
+      navigate("/", { replace: true });
       
     } catch (error) {
       console.error("Błąd usuwania budżetu:", error);
@@ -445,7 +474,7 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
             {error || "Budżet nie został znaleziony lub nie masz do niego dostępu."}
           </p>
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/", { replace: true })}
             className="bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-6 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all font-medium shadow-lg shadow-blue-500/30"
           >
             Wróć do listy budżetów
@@ -458,20 +487,7 @@ export default function BudgetSettings({ session, selectedBudget, onBudgetChange
   const isOwner = budget.owner_id === session.user.id;
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
-          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold text-white">Ustawienia budżetu</h1>
-          <p className="text-gray-400 text-sm">{budget.name}</p>
-        </div>
-      </div>
+    <div className="space-y-6">
 
       {/* Podstawowe informacje */}
       <div className="bg-dark-surface border border-dark-border rounded-xl p-6 shadow-lg">
