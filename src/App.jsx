@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import React, { Suspense, lazy } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { supabase } from "./lib/supabaseClient";
 import Login from "./components/Login";
@@ -10,6 +11,8 @@ import BudgetSettings from "./components/BudgetSettings";
 import ToastContainer from "./components/ToastContainer";
 import { ToastProvider, useToast } from "./contexts/ToastContext"; // ✅ Import z contexts
 import ErrorBoundary from "./components/ErrorBoundary";
+
+const ResetPassword = lazy(() => import("./components/ResetPassword.jsx"));
 
 function AppContent() {
   const [session, setSession] = useState(null);
@@ -131,7 +134,16 @@ function AppContent() {
   }
 
   if (!session) {
-    return <Login />;
+    return (
+      <Router>
+        <Suspense fallback={<div className="text-center text-white p-8">Ładowanie...</div>}>
+          <Routes>
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="*" element={<Login />} />
+          </Routes>
+        </Suspense>
+      </Router>
+    );
   }
 
   return (
@@ -149,23 +161,26 @@ function AppContent() {
               />
 
               <main className="mt-6">
-                <Routes>
-                  <Route path="/" element={<Dashboard session={session} budget={selectedBudget} />} />
-                  <Route path="/expenses" element={<Expenses session={session} budget={selectedBudget} />} />
-                  <Route path="/income" element={<Income session={session} budget={selectedBudget} />} />
-                  <Route 
-                    path="/budget/:budgetId/settings" 
-                    element={
-                      <BudgetSettings 
-                        session={session}
-                        selectedBudget={selectedBudget}
-                        onBudgetChange={handleBudgetChange}
-                        onBudgetDeleted={handleBudgetDeleted}
-                      />
-                    } 
-                  />
-                  <Route path="*" element={<Navigate to="/" />} />
-                </Routes>
+                <Suspense fallback={<div className="text-center text-white p-8">Ładowanie...</div>}>
+                  <Routes>
+                    <Route path="/" element={<Dashboard session={session} budget={selectedBudget} />} />
+                    <Route path="/expenses" element={<Expenses session={session} budget={selectedBudget} />} />
+                    <Route path="/income" element={<Income session={session} budget={selectedBudget} />} />
+                    <Route 
+                      path="/budget/:budgetId/settings" 
+                      element={
+                        <BudgetSettings 
+                          session={session}
+                          selectedBudget={selectedBudget}
+                          onBudgetChange={handleBudgetChange}
+                          onBudgetDeleted={handleBudgetDeleted}
+                        />
+                      } 
+                    />
+                    <Route path="/reset-password" element={<ResetPassword />} />
+                    <Route path="*" element={<Navigate to="/" />} />
+                  </Routes>
+                </Suspense>
               </main>
             </div>
           </div>

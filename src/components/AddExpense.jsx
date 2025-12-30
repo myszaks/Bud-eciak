@@ -5,11 +5,28 @@ export default function AddExpense({ userId, onAdded }) {
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
 
+  function validateInput() {
+    if (!title.trim()) {
+      alert("Tytuł nie może być pusty.");
+      return false;
+    }
+    if (title.length > 100) {
+      alert("Tytuł jest za długi (max 100 znaków).");
+      return false;
+    }
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) {
+      alert("Kwota musi być liczbą dodatnią.");
+      return false;
+    }
+    return true;
+  }
+
   async function handleAdd() {
-    if (!title || !amount) return;
+    if (!validateInput()) return;
     const { error } = await supabase
       .from("expenses")
-      .insert([{ user_id: userId, title, amount: parseFloat(amount) }]);
+      .insert([{ user_id: userId, title: title.trim(), amount: parseFloat(amount) }]);
     if (error) console.error(error);
     else {
       setTitle("");

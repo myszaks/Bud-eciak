@@ -42,7 +42,9 @@ export default function CategoryAutocomplete({
     }
 
     debounceTimerRef.current = setTimeout(async () => {
-      if (!searchText || searchText.length < 2) {
+      const sanitizedSearch = searchText.trim().slice(0, 50);
+      // Only allow letters, numbers, spaces, and basic punctuation
+      if (!sanitizedSearch || sanitizedSearch.length < 2 || !/^[\w\sąćęłńóśźżĄĆĘŁŃÓŚŹŻ.,-]*$/.test(sanitizedSearch)) {
         setSuggestions([]);
         setShowSuggestions(false);
         return;
@@ -56,11 +58,7 @@ export default function CategoryAutocomplete({
 
       try {
         setLoading(true);
-        
-        const sanitizedSearch = searchText.trim().slice(0, 50);
-        
         const table = type === "expense" ? "expenses" : "income";
-        
         const { data, error } = await supabase
           .from(table)
           .select("category")
@@ -71,7 +69,6 @@ export default function CategoryAutocomplete({
 
         if (error) throw error;
 
-        // ✅ DODAJ: Sprawdzenie czy data nie jest null
         if (!data) {
           setSuggestions([]);
           setShowSuggestions(false);

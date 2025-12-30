@@ -10,6 +10,11 @@ export default function Login() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [message, setMessage] = useState(null);
 
+  function isStrongPassword(pw) {
+    // Minimum 8 chars, at least one letter and one number
+    return /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d!@#$%^&*()_+\-=]{8,}$/.test(pw);
+  }
+
   async function handleAuth(e) {
     e.preventDefault();
     setLoading(true);
@@ -17,6 +22,14 @@ export default function Login() {
 
     try {
       if (isSignUp) {
+        if (!isStrongPassword(password)) {
+          setMessage({
+            type: "error",
+            text: "Hasło musi mieć min. 8 znaków, zawierać literę i cyfrę."
+          });
+          setLoading(false);
+          return;
+        }
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -75,13 +88,11 @@ export default function Login() {
           </div>
 
           {message && (
-            <div
-              className={`mb-6 p-4 rounded-lg flex items-start gap-3 ${
-                message.type === "error"
-                  ? "bg-red-500/10 border border-red-500/30"
-                  : "bg-green-500/10 border border-green-500/30"
-              }`}
-            >
+            <div className={`mb-6 p-4 rounded-lg flex items-start gap-3 ${
+              message.type === "error"
+                ? "bg-red-500/10 border border-red-500/30"
+                : "bg-green-500/10 border border-green-500/30"
+            }`}>
               <svg
                 className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
                   message.type === "error" ? "text-red-400" : "text-green-400"
@@ -209,6 +220,17 @@ export default function Login() {
               )}
             </button>
           </form>
+
+          <div className="mt-6 flex flex-col items-center">
+            {!isSignUp && (
+              <a
+                href="/reset-password"
+                className="text-blue-400 hover:underline text-sm"
+              >
+                Zapomniałeś hasła?
+              </a>
+            )}
+          </div>
 
           <div className="mt-6 text-center">
             <button
