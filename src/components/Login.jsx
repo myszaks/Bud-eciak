@@ -8,7 +8,6 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
-  const [message, setMessage] = useState(null);
 
   function isStrongPassword(pw) {
     // Minimum 8 chars, at least one letter and one number
@@ -18,43 +17,49 @@ export default function Login() {
   async function handleAuth(e) {
     e.preventDefault();
     setLoading(true);
-    setMessage(null);
 
     try {
       if (isSignUp) {
         if (!isStrongPassword(password)) {
-          setMessage({
-            type: "error",
-            text: "Hasło musi mieć min. 8 znaków, zawierać literę i cyfrę."
-          });
-          setLoading(false);
+          toast.error("Hasło musi mieć min. 8 znaków, zawierać literę i cyfrę.");
           return;
         }
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
+        const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        setMessage({
-          type: "success",
-          text: "Sprawdź swoją skrzynkę email, aby potwierdzić rejestrację!",
-        });
+        toast.success("Sprawdź swoją skrzynkę email, aby potwierdzić rejestrację!");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
-    } catch (error) {
-      setMessage({
-        type: "error",
-        text: error.message,
-      });
+    } catch (err) {
+      toast.error(err.message || "Coś poszło nie tak");
     } finally {
       setLoading(false);
     }
   }
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      toast.error("Podaj adres email aby wysłać link resetujący");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: import.meta.env.PROD
+          ? "https://budzet.app/reset-password"
+          : "http://localhost:5173/reset-password",
+      });
+
+      if (error) throw error;
+      toast.success("Sprawdź swoją skrzynkę — wysłaliśmy link do resetu hasła");
+    } catch (err) {
+      toast.error(err.message || "Coś poszło nie tak");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-dark-bg via-dark-surface to-dark-bg flex items-center justify-center p-4">
@@ -87,111 +92,37 @@ export default function Login() {
             </p>
           </div>
 
-          {message && (
-            <div className={`mb-6 p-4 rounded-lg flex items-start gap-3 ${
-              message.type === "error"
-                ? "bg-red-500/10 border border-red-500/30"
-                : "bg-green-500/10 border border-green-500/30"
-            }`}>
-              <svg
-                className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-                  message.type === "error" ? "text-red-400" : "text-green-400"
-                }`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                {message.type === "error" ? (
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                ) : (
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                )}
-              </svg>
-              <p
-                className={`text-sm ${
-                  message.type === "error" ? "text-red-400" : "text-green-400"
-                }`}
-              >
-                {message.text}
-              </p>
-            </div>
-          )}
-
           <form onSubmit={handleAuth} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">
                 Email
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg
-                    className="w-5 h-5 text-gray-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"
-                    />
-                  </svg>
-                </div>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="twoj@email.com"
-                  required
-                  className="w-full pl-10 pr-4 py-3 bg-dark-card border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                />
-              </div>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="twoj@email.com"
+                required
+                className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+              />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">
                 Hasło
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg
-                    className="w-5 h-5 text-gray-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                    />
-                  </svg>
-                </div>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                  className="w-full pl-10 pr-4 py-3 bg-dark-card border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                />
-              </div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={6}
+                className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+              />
               {isSignUp && (
                 <p className="text-xs text-gray-500 mt-2">
-                  Minimum 6 znaków
+                  Minimum 8 znaków, litera + cyfra
                 </p>
               )}
             </div>
@@ -199,45 +130,27 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-4 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all font-medium shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-4 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all font-medium shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                  <span>Ładowanie...</span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {isSignUp ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                    )}
-                  </svg>
-                  <span>{isSignUp ? "Zarejestruj się" : "Zaloguj się"}</span>
-                </>
-              )}
+              {loading ? "Ładowanie..." : isSignUp ? "Zarejestruj się" : "Zaloguj się"}
             </button>
           </form>
 
-          <div className="mt-6 flex flex-col items-center">
-            {!isSignUp && (
-              <a
-                href="/reset-password"
+          {!isSignUp && (
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
                 className="text-blue-400 hover:underline text-sm"
               >
                 Zapomniałeś hasła?
-              </a>
-            )}
-          </div>
+              </button>
+            </div>
+          )}
 
           <div className="mt-6 text-center">
             <button
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setMessage(null);
-              }}
+              onClick={() => setIsSignUp(!isSignUp)}
               className="text-sm text-gray-400 hover:text-blue-400 transition-colors"
             >
               {isSignUp
@@ -247,10 +160,9 @@ export default function Login() {
           </div>
         </div>
 
-        {/* Stopka */}
         <div className="text-center mt-8">
           <p className="text-xs text-gray-500">
-            © 2024 Budżeciak. Wszystkie prawa zastrzeżone.
+            © 2024 Budzet.app. Wszystkie prawa zastrzeżone.
           </p>
         </div>
       </div>

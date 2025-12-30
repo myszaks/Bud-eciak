@@ -8,7 +8,6 @@ import Dashboard from "./components/Dashboard";
 import Expenses from "./components/Expenses";
 import Income from "./components/Income";
 import BudgetSettings from "./components/BudgetSettings";
-import ForwardToSupabase from "./components/ForwardToSupabase";
 import ToastContainer from "./components/ToastContainer";
 import { ToastProvider, useToast } from "./contexts/ToastContext"; // ✅ Import z contexts
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -179,7 +178,6 @@ function AppContent() {
                       } 
                     />
                     <Route path="/reset-password" element={<ResetPassword />} />
-                    <Route path="/auth/forward-to-supabase" element={<ForwardToSupabase />} />
                     <Route path="*" element={<Navigate to="/" />} />
                   </Routes>
                 </Suspense>
