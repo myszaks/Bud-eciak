@@ -25,58 +25,61 @@ function AppContent() {
 
     async function initializeSession() {
       try {
-        return (
-          <>
-            {session ? (
-              <ErrorBoundary>
-                <div className="min-h-screen bg-dark-bg text-white">
-                  <div className="container mx-auto px-4 py-6">
-                    <Navigation
-                      session={session}
-                      selectedBudget={selectedBudget}
-                      onBudgetChange={handleBudgetChange}
-                      onBudgetDeleted={handleBudgetDeleted}
-                      budgetRefreshTrigger={budgetRefreshTrigger}
-                    />
-                    <main className="mt-6">
-                      <Suspense fallback={<div className="text-center text-white p-8">Ładowanie...</div>}>
-                        <Routes>
-                          <Route path="/" element={<Dashboard session={session} budget={selectedBudget} />} />
-                          <Route path="/expenses" element={<Expenses session={session} budget={selectedBudget} />} />
-                          <Route path="/income" element={<Income session={session} budget={selectedBudget} />} />
-                          <Route 
-                            path="/budget/:budgetId/settings" 
-                            element={
-                              <BudgetSettings 
-                                session={session}
-                                selectedBudget={selectedBudget}
-                                onBudgetChange={handleBudgetChange}
-                                onBudgetDeleted={handleBudgetDeleted}
-                              />
-                            } 
-                          />
-                          <Route path="/reset-password" element={<ResetPassword />} />
-                          <Route path="*" element={<Navigate to="/" />} />
-                        </Routes>
-                      </Suspense>
-                    </main>
-                  </div>
-                </div>
-              </ErrorBoundary>
-            ) : (
-              <Suspense fallback={<div className="text-center text-white p-8">Ładowanie...</div>}>
-                <Routes>
-                  <Route path="/reset-password" element={<ResetPassword />} />
-                  <Route path="*" element={<Login />} />
-                </Routes>
-              </Suspense>
-            )}
-            <ToastContainer toasts={toasts} removeToast={removeToast} />
-          </>
-        );
+        setLoading(true);
+        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+        if (error) {
+          if (isMounted) setSession(null);
+          return;
+        }
+        if (isMounted) setSession(currentSession);
 
-    // ...existing code...
-    // initializeSession and authListener setup should be inside useEffect only
+        if (currentSession) {
+          const savedBudgetId = localStorage.getItem("selectedBudgetId");
+          if (savedBudgetId) {
+            const { data: budget, error: budgetError } = await supabase
+              .from("budgets")
+              .select("*")
+              .eq("id", savedBudgetId)
+              .single();
+
+            if (!budgetError && budget && isMounted) {
+              if (budget.owner_id === currentSession.user.id) {
+                setSelectedBudget({ ...budget, is_owner: true });
+              } else {
+                const { data: access } = await supabase
+                  .from("budget_access")
+                  .select("access_level")
+                  .eq("budget_id", savedBudgetId)
+                  .eq("user_id", currentSession.user.id)
+                  .single();
+
+                if (access && isMounted) {
+                  setSelectedBudget({
+                    ...budget,
+                    is_shared: true,
+                    access_level: access.access_level
+                  });
+                } else {
+                  localStorage.removeItem("selectedBudgetId");
+                  if (isMounted) setSelectedBudget(null);
+                }
+              }
+            } else {
+              localStorage.removeItem("selectedBudgetId");
+              if (isMounted) setSelectedBudget(null);
+            }
+          }
+        }
+      } catch (error) {
+        // Optionally log error
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    initializeSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         if (isMounted) {
           setSession(currentSession);
