@@ -1,5 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
-import React, { Suspense, lazy } from "react";
+import { useEffect, useState, useCallback, Suspense, lazy } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { supabase } from "./lib/supabaseClient";
 import Login from "./components/Login";
@@ -9,7 +8,7 @@ import Expenses from "./components/Expenses";
 import Income from "./components/Income";
 import BudgetSettings from "./components/BudgetSettings";
 import ToastContainer from "./components/ToastContainer";
-import { ToastProvider, useToast } from "./contexts/ToastContext"; // ✅ Import z contexts
+import { ToastProvider, useToast } from "./contexts/ToastContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 const ResetPassword = lazy(() => import("./components/ResetPassword.jsx"));
@@ -19,7 +18,7 @@ function AppContent() {
   const [selectedBudget, setSelectedBudget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [budgetRefreshTrigger, setBudgetRefreshTrigger] = useState(0);
-  const { toasts, removeToast } = useToast(); // ✅ Pobierz z contextu
+  const { toasts, removeToast } = useToast();
 
   useEffect(() => {
     let isMounted = true;
@@ -27,15 +26,12 @@ function AppContent() {
     async function initializeSession() {
       try {
         setLoading(true);
-        
         const { data: { session: currentSession }, error } = await supabase.auth.getSession();
-        
         if (error) {
           console.error("Błąd pobierania sesji:", error);
           if (isMounted) setSession(null);
           return;
         }
-
         if (isMounted) setSession(currentSession);
 
         if (currentSession) {
@@ -59,10 +55,10 @@ function AppContent() {
                   .single();
 
                 if (access && isMounted) {
-                  setSelectedBudget({ 
-                    ...budget, 
-                    is_shared: true, 
-                    access_level: access.access_level 
+                  setSelectedBudget({
+                    ...budget,
+                    is_shared: true,
+                    access_level: access.access_level
                   });
                 } else {
                   localStorage.removeItem("selectedBudgetId");
@@ -86,7 +82,6 @@ function AppContent() {
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
-        console.log("Auth state changed:", event);
         if (isMounted) {
           setSession(currentSession);
           if (!currentSession) {
@@ -104,7 +99,6 @@ function AppContent() {
   }, []);
 
   const handleBudgetChange = useCallback((budget) => {
-    console.log("[App] Budget changed to:", budget);
     setSelectedBudget(budget);
     if (budget?.id) {
       localStorage.setItem("selectedBudgetId", budget.id);
@@ -112,13 +106,10 @@ function AppContent() {
   }, []);
 
   const handleBudgetDeleted = useCallback((deletedBudgetId) => {
-    console.log("[App] Budget deleted:", deletedBudgetId);
-    
     if (selectedBudget?.id === deletedBudgetId) {
       setSelectedBudget(null);
       localStorage.removeItem("selectedBudgetId");
     }
-    
     setBudgetRefreshTrigger(prev => prev + 1);
   }, [selectedBudget?.id]);
 
@@ -135,58 +126,52 @@ function AppContent() {
 
   if (!session) {
     return (
-      <Router>
-        <Suspense fallback={<div className="text-center text-white p-8">Ładowanie...</div>}>
-          <Routes>
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="*" element={<Login />} />
-          </Routes>
-        </Suspense>
-      </Router>
+      <Suspense fallback={<div className="text-center text-white p-8">Ładowanie...</div>}>
+        <Routes>
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="*" element={<Login />} />
+        </Routes>
+      </Suspense>
     );
   }
 
   return (
     <>
-      <Router>
-        <ErrorBoundary>
-          <div className="min-h-screen bg-dark-bg text-white">
-            <div className="container mx-auto px-4 py-6">
-              <Navigation
-                session={session}
-                selectedBudget={selectedBudget}
-                onBudgetChange={handleBudgetChange}
-                onBudgetDeleted={handleBudgetDeleted}
-                budgetRefreshTrigger={budgetRefreshTrigger}
-              />
-
-              <main className="mt-6">
-                <Suspense fallback={<div className="text-center text-white p-8">Ładowanie...</div>}>
-                  <Routes>
-                    <Route path="/" element={<Dashboard session={session} budget={selectedBudget} />} />
-                    <Route path="/expenses" element={<Expenses session={session} budget={selectedBudget} />} />
-                    <Route path="/income" element={<Income session={session} budget={selectedBudget} />} />
-                    <Route 
-                      path="/budget/:budgetId/settings" 
-                      element={
-                        <BudgetSettings 
-                          session={session}
-                          selectedBudget={selectedBudget}
-                          onBudgetChange={handleBudgetChange}
-                          onBudgetDeleted={handleBudgetDeleted}
-                        />
-                      } 
-                    />
-                    <Route path="/reset-password" element={<ResetPassword />} />
-                    <Route path="*" element={<Navigate to="/" />} />
-                  </Routes>
-                </Suspense>
-              </main>
-            </div>
+      <ErrorBoundary>
+        <div className="min-h-screen bg-dark-bg text-white">
+          <div className="container mx-auto px-4 py-6">
+            <Navigation
+              session={session}
+              selectedBudget={selectedBudget}
+              onBudgetChange={handleBudgetChange}
+              onBudgetDeleted={handleBudgetDeleted}
+              budgetRefreshTrigger={budgetRefreshTrigger}
+            />
+            <main className="mt-6">
+              <Suspense fallback={<div className="text-center text-white p-8">Ładowanie...</div>}>
+                <Routes>
+                  <Route path="/" element={<Dashboard session={session} budget={selectedBudget} />} />
+                  <Route path="/expenses" element={<Expenses session={session} budget={selectedBudget} />} />
+                  <Route path="/income" element={<Income session={session} budget={selectedBudget} />} />
+                  <Route
+                    path="/budget/:budgetId/settings"
+                    element={
+                      <BudgetSettings
+                        session={session}
+                        selectedBudget={selectedBudget}
+                        onBudgetChange={handleBudgetChange}
+                        onBudgetDeleted={handleBudgetDeleted}
+                      />
+                    }
+                  />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="*" element={<Navigate to="/" />} />
+                </Routes>
+              </Suspense>
+            </main>
           </div>
-        </ErrorBoundary>
-      </Router>
-      
+        </div>
+      </ErrorBoundary>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
     </>
   );
@@ -195,7 +180,9 @@ function AppContent() {
 export default function App() {
   return (
     <ToastProvider>
-      <AppContent />
+      <Router>
+        <AppContent />
+      </Router>
     </ToastProvider>
   );
 }
