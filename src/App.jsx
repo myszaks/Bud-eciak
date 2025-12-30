@@ -75,9 +75,8 @@ function AppContent() {
           </>
         );
 
-    initializeSession();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(
+    // ...existing code...
+    // initializeSession and authListener setup should be inside useEffect only
       async (event, currentSession) => {
         if (isMounted) {
           setSession(currentSession);
