@@ -77,7 +77,7 @@ export default function ResetPasswordPage() {
 
         {status === "success" && (
           <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400 text-center">
-            Hasło zostało zmienione ✅ Za chwilę zostaniesz przeniesiony.
+            Hasło zostało zmienione. Za chwilę zostaniesz przeniesiony.
           </div>
         )}
 
