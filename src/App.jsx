@@ -8,7 +8,6 @@ import Dashboard from "./components/Dashboard";
 import Expenses from "./components/Expenses";
 import Income from "./components/Income";
 import BudgetSettings from "./components/BudgetSettings";
-import ResetPassword from "./components/ResetPassword";
 import ForwardToSupabase from "./components/ForwardToSupabase";
 import ToastContainer from "./components/ToastContainer";
 import { ToastProvider, useToast } from "./contexts/ToastContext"; // ✅ Import z contexts
