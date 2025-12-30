@@ -38,7 +38,8 @@ export default function Login() {
     }
   }
 
-  const handleForgotPassword = async () => {
+  async function handleForgotPassword(e) {
+    e.preventDefault();
     if (!email) {
       toast.error("Podaj adres email aby wysłać link resetujący");
       return;
