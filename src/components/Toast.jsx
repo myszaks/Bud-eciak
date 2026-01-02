@@ -33,10 +33,10 @@ export default function Toast({ message, type = "info", onClose, duration = 4000
   };
 
   const styles = {
-    success: "bg-green-500/20 border-green-500/50 text-green-400",
-    error: "bg-red-500/20 border-red-500/50 text-red-400",
-    warning: "bg-orange-500/20 border-orange-500/50 text-orange-400",
-    info: "bg-blue-500/20 border-blue-500/50 text-blue-400",
+    success: "bg-green-600 border-green-500/20 text-white",
+    error: "bg-red-600 border-red-500/20 text-white",
+    warning: "bg-orange-600 border-orange-500/20 text-white",
+    info: "bg-blue-600 border-blue-500/20 text-white",
   };
 
   return (
@@ -50,7 +50,7 @@ export default function Toast({ message, type = "info", onClose, duration = 4000
         </div>
         <button
           onClick={onClose}
-          className="flex-shrink-0 text-gray-400 hover:text-white transition-colors"
+          className="flex-shrink-0 text-white hover:text-white transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

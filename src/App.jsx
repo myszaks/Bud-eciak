@@ -1,5 +1,10 @@
 import { useEffect, useState, useCallback, Suspense, lazy } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import { supabase } from "./lib/supabaseClient";
 import Login from "./components/Login";
 import Navigation from "./components/Navigation";
@@ -10,6 +15,7 @@ import BudgetSettings from "./components/BudgetSettings";
 import ToastContainer from "./components/ToastContainer";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { ModalProvider } from "./contexts/ModalContext";
 
 const ResetPassword = lazy(() => import("./components/ResetPassword.jsx"));
 
@@ -26,7 +32,10 @@ function AppContent() {
     async function initializeSession() {
       try {
         setLoading(true);
-        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+        const {
+          data: { session: currentSession },
+          error,
+        } = await supabase.auth.getSession();
         if (error) {
           if (isMounted) setSession(null);
           return;
@@ -57,7 +66,7 @@ function AppContent() {
                   setSelectedBudget({
                     ...budget,
                     is_shared: true,
-                    access_level: access.access_level
+                    access_level: access.access_level,
                   });
                 } else {
                   localStorage.removeItem("selectedBudgetId");
@@ -104,40 +113,53 @@ function AppContent() {
     }
   }, []);
 
-  const handleBudgetDeleted = useCallback((deletedBudgetId) => {
-    if (selectedBudget?.id === deletedBudgetId) {
-      setSelectedBudget(null);
-      localStorage.removeItem("selectedBudgetId");
-    }
-    setBudgetRefreshTrigger(prev => prev + 1);
-  }, [selectedBudget?.id]);
+  const handleBudgetDeleted = useCallback(
+    (deletedBudgetId) => {
+      if (selectedBudget?.id === deletedBudgetId) {
+        setSelectedBudget(null);
+        localStorage.removeItem("selectedBudgetId");
+      }
+      setBudgetRefreshTrigger((prev) => prev + 1);
+    },
+    [selectedBudget?.id]
+  );
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-gray-400">Ładowanie...</p>
+      <>
+        <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+            <p className="text-gray-400">Ładowanie...</p>
+          </div>
         </div>
-      </div>
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+      </>
     );
   }
 
   if (!session) {
     return (
-      <Suspense fallback={<div className="text-center text-white p-8">Ładowanie...</div>}>
-        <Routes>
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="*" element={<Login />} />
-        </Routes>
-      </Suspense>
+      <>
+        <Suspense
+          fallback={
+            <div className="text-center text-white p-8">Ładowanie...</div>
+          }
+        >
+          <Routes>
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="*" element={<Login />} />
+          </Routes>
+        </Suspense>
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+      </>
     );
   }
 
   return (
     <>
       <ErrorBoundary>
-        <div className="min-h-screen bg-dark-bg text-white">
+        <div className="min-h-screen bg-gray-50 text-gray-900">
           <div className="container mx-auto px-4 py-6">
             <Navigation
               session={session}
@@ -147,11 +169,32 @@ function AppContent() {
               budgetRefreshTrigger={budgetRefreshTrigger}
             />
             <main className="mt-6">
-              <Suspense fallback={<div className="text-center text-white p-8">Ładowanie...</div>}>
+              <Suspense
+                fallback={
+                  <div className="text-center text-gray-700 p-8">
+                    Ładowanie...
+                  </div>
+                }
+              >
                 <Routes>
-                  <Route path="/" element={<Dashboard session={session} budget={selectedBudget} />} />
-                  <Route path="/expenses" element={<Expenses session={session} budget={selectedBudget} />} />
-                  <Route path="/income" element={<Income session={session} budget={selectedBudget} />} />
+                  <Route
+                    path="/"
+                    element={
+                      <Dashboard session={session} budget={selectedBudget} />
+                    }
+                  />
+                  <Route
+                    path="/expenses"
+                    element={
+                      <Expenses session={session} budget={selectedBudget} />
+                    }
+                  />
+                  <Route
+                    path="/income"
+                    element={
+                      <Income session={session} budget={selectedBudget} />
+                    }
+                  />
                   <Route
                     path="/budget/:budgetId/settings"
                     element={
@@ -171,6 +214,7 @@ function AppContent() {
           </div>
         </div>
       </ErrorBoundary>
+
       <ToastContainer toasts={toasts} removeToast={removeToast} />
     </>
   );
@@ -179,9 +223,11 @@ function AppContent() {
 export default function App() {
   return (
     <ToastProvider>
-      <Router>
-        <AppContent />
-      </Router>
+      <ModalProvider>
+        <Router>
+          <AppContent />
+        </Router>
+      </ModalProvider>
     </ToastProvider>
   );
 }

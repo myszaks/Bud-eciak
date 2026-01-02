@@ -22,14 +22,21 @@ export default function useExpenses(userId) {
   useEffect(() => {
     fetchExpenses();
 
-    // realtime subscription
+    // realtime subscription — filter by user_id to avoid global refetches
+    if (!userId) return;
+
     const channel = supabase
-      .channel("public:expenses")
+      .channel(`public:expenses:user:${userId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "expenses" },
+        {
+          event: "*",
+          schema: "public",
+          table: "expenses",
+          filter: `user_id=eq.${userId}`,
+        },
         (payload) => {
-          // proste zachowanie: refetch (dla prostoty; można bardziej granularnie)
+          // refetch only when relevant
           fetchExpenses();
         }
       )
@@ -37,9 +44,13 @@ export default function useExpenses(userId) {
 
     return () => {
       // usuń subskrypcję
-      supabase.removeChannel(channel);
+      try {
+        supabase.removeChannel(channel);
+      } catch (e) {
+        /* ignore */
+      }
     };
-  }, [fetchExpenses]);
+  }, [fetchExpenses, userId]);
 
   async function addExpense({ title, amount }) {
     if (!userId) throw new Error("Brak userId");

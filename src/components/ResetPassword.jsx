@@ -10,6 +10,17 @@ export default function ResetPasswordPage() {
   const [status, setStatus] = useState("checking"); // checking | ready | submitting | success | error
   const [error, setError] = useState(null);
 
+  function translateError(message) {
+    if (!message) return null;
+    const m = message.toString().toLowerCase();
+    if (m.includes("expired") || m.includes("wygas")) return "Link resetujący wygasł.";
+    if (m.includes("invalid") || m.includes("nieprawid")) return "Link resetujący jest nieważny.";
+    if (m.includes("password") && (m.includes("weak") || m.includes("too short") || m.includes("short")))
+      return "Hasło jest za słabe. Użyj co najmniej 8 znaków, w tym liter i cyfr.";
+    if (m.includes("token") || m.includes("jwt")) return "Token jest nieprawidłowy.";
+    return message;
+  }
+
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
@@ -40,13 +51,12 @@ export default function ResetPasswordPage() {
     const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
-      setError(error.message);
-      toast.error(error.message || "Coś poszło nie tak");
-      setStatus("error");
+      const msg = translateError(error.message);
+      setError(msg);
+      toast.error(msg || "Coś poszło nie tak");
+      setStatus("ready");
     } else {
       setStatus("success");
-      toast.success("Hasło zostało zmienione ✅");
-
       // Po 3s przekierowanie na dashboard
       setTimeout(() => {
         navigate("/dashboard");
@@ -57,12 +67,12 @@ export default function ResetPasswordPage() {
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50">
       {/* Blur + dark overlay */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
 
       {/* Modal */}
-      <div className="relative bg-dark-surface border border-dark-border rounded-2xl shadow-2xl p-8 w-full max-w-md z-10">
-        <h2 className="text-2xl font-bold text-white mb-6 text-center">
-          Reset hasła
+      <div className="relative bg-white border border-dark-border rounded-2xl shadow-2xl p-8 w-full max-w-md z-10">
+        <h2 className="text-2xl font-bold mb-6 text-center">
+          Resetowanie hasła
         </h2>
 
         {status === "checking" && (
@@ -84,7 +94,7 @@ export default function ResetPasswordPage() {
         {status === "ready" && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">
+              <label className="block text-sm font-medium text-text mb-2">
                 Nowe hasło
               </label>
               <input
@@ -92,7 +102,7 @@ export default function ResetPasswordPage() {
                 placeholder="Nowe hasło"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none"
+                className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded-lg text-text placeholder-gray-500 focus:outline-none"
                 required
               />
             </div>

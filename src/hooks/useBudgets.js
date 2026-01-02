@@ -14,40 +14,35 @@ export function useBudgets(session, triggerRefresh = 0) {
 
     try {
       setLoading(true);
-      console.log("[useBudgets] Fetching budgets...");
 
-      // ✅ Pobierz budżety własne
-      const { data: ownedBudgets, error: ownedError } = await supabase
+      // Fetch owned and shared in parallel and limit columns to needed fields
+      const ownedPromise = supabase
         .from("budgets")
-        .select("*")
+        .select("id,name,description,created_at,owner_id")
         .eq("owner_id", session.user.id)
         .order("created_at", { ascending: false });
+
+      const sharedPromise = supabase
+        .from("budget_access")
+        .select(`budget_id,access_level,budgets(id,name,description,created_at,owner_id)`)
+        .eq("user_id", session.user.id);
+
+      const [
+        { data: ownedBudgets, error: ownedError },
+        { data: sharedAccess, error: sharedError },
+      ] = await Promise.all([ownedPromise, sharedPromise]);
 
       if (ownedError) {
         console.error("[useBudgets] Error fetching owned budgets:", ownedError);
         throw ownedError;
       }
 
-      console.log("[useBudgets] Owned budgets:", ownedBudgets);
-
-      // ✅ Pobierz budżety udostępnione
-      const { data: sharedAccess, error: sharedError } = await supabase
-        .from("budget_access")
-        .select(`
-          budget_id,
-          access_level,
-          budgets (*)
-        `)
-        .eq("user_id", session.user.id);
-
       if (sharedError) {
         console.error("[useBudgets] Error fetching shared budgets:", sharedError);
       }
 
-      console.log("[useBudgets] Shared access:", sharedAccess);
-
       const sharedBudgets = (sharedAccess || [])
-        .filter(access => access.budgets) // ✅ Filtruj null budgets
+        .filter((access) => access.budgets)
         .map((access) => ({
           ...access.budgets,
           is_shared: true,
@@ -63,7 +58,6 @@ export function useBudgets(session, triggerRefresh = 0) {
         (a, b) => new Date(b.created_at) - new Date(a.created_at)
       );
 
-      console.log("[useBudgets] All budgets:", allBudgets);
       setBudgets(allBudgets);
     } catch (error) {
       console.error("Błąd pobierania budżetów:", error);
@@ -71,7 +65,7 @@ export function useBudgets(session, triggerRefresh = 0) {
     } finally {
       setLoading(false);
     }
-  }, [session?.user?.id, triggerRefresh]); // ✅ Dodaj triggerRefresh do dependencies
+  }, [session?.user?.id, triggerRefresh]);
 
   useEffect(() => {
     fetchBudgets();
