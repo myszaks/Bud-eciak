@@ -3,10 +3,7 @@ import { supabase } from "../lib/supabaseClient";
 import CategoryAutocomplete from "./CategoryAutocomplete";
 import { useToast } from "../contexts/ToastContext";
 import { useModal } from "../contexts/ModalContext";
-import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import dayjs from "dayjs";
+import DatePickerField from "./DatePickerField";
 
 export default function Income({ session, budget }) {
   const toast = useToast();
@@ -342,27 +339,14 @@ export default function Income({ session, budget }) {
                 <label className="block text-sm font-medium text-text mb-2">
                   Data *
                 </label>
-                <LocalizationProvider
-                  dateAdapter={AdapterDayjs}
-                  adapterLocale="pl"
-                >
-                  <DatePicker
-                    value={date ? dayjs(date) : dayjs()}
-                    onChange={(newVal) =>
-                      setDate(newVal ? newVal.format("YYYY-MM-DD") : "")
-                    }
-                    slotProps={{
-                      textField: {
-                        size: "small",
-                        fullWidth: true,
-                        required: true,
-                        inputProps: { readOnly: true },
-                        className:
-                          "w-full px-4 py-2.5 bg-dark-card border border-dark-border rounded-lg text-text focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all",
-                      },
-                    }}
-                  />
-                </LocalizationProvider>
+                <DatePickerField
+                  value={date || null}
+                  onChange={setDate}
+                  required
+                  textFieldClassName={
+                    "w-full px-4 py-2.5 bg-dark-card border border-dark-border rounded-lg text-text focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
+                  }
+                />
               </div>
             </div>
 
@@ -509,29 +493,14 @@ export default function Income({ session, budget }) {
                         placeholder="Kategoria"
                         className="w-full px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
                       />
-                      <LocalizationProvider
-                        dateAdapter={AdapterDayjs}
-                        adapterLocale="pl"
-                      >
-                        <DatePicker
-                          value={editDate ? dayjs(editDate) : null}
-                          onChange={(newVal) =>
-                            setEditDate(
-                              newVal ? newVal.format("YYYY-MM-DD") : ""
-                            )
-                          }
-                          slotProps={{
-                            textField: {
-                              size: "small",
-                              fullWidth: true,
-                              required: true,
-                              inputProps: { readOnly: true },
-                              className:
-                                "w-full px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all",
-                            },
-                          }}
-                        />
-                      </LocalizationProvider>
+                      <DatePickerField
+                        value={editDate || null}
+                        onChange={setEditDate}
+                        required
+                        textFieldClassName={
+                          "w-full px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
+                        }
+                      />
                     </div>
                     <textarea
                       value={editDescription}
