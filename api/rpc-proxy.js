@@ -25,7 +25,14 @@ async function upstashExpire(key, seconds) {
 }
 
 module.exports = async (req, res) => {
-  if (req.method !== 'POST') return res.status(405).end();
+  // Handle CORS preflight (even if same-origin, browsers may send OPTIONS with custom headers)
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-client-id');
+    return res.status(204).end();
+  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
 
   let body;
   try {
@@ -103,9 +110,15 @@ module.exports = async (req, res) => {
       body: JSON.stringify(params || {}),
     });
 
-    const json = await r.json().catch(() => null);
-    res.status(r.status === 204 ? 200 : r.status).json(json ?? {});
+    const contentType = r.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
+    const payload = isJson ? await r.json().catch(() => null) : await r.text().catch(() => null);
+    const status = r.status === 204 ? 200 : r.status;
+    if (status >= 400) {
+      return res.status(status).json({ error: 'supabase_rpc_error', status, rpc, upstream: payload });
+    }
+    res.status(status).json(payload ?? {});
   } catch (err) {
-    res.status(502).json({ error: 'upstream_error', message: String(err) });
+    res.status(502).json({ error: 'upstream_error', rpc, message: String(err) });
   }
 };
