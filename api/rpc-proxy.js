@@ -24,7 +24,7 @@ async function upstashExpire(key, seconds) {
   return r.ok;
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   // Handle CORS preflight (even if same-origin, browsers may send OPTIONS with custom headers)
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -156,4 +156,4 @@ module.exports = async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: 'upstream_error', rpc, message: String(err) });
   }
-};
+}

@@ -1,4 +1,4 @@
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   try {
     if (req.method === 'OPTIONS') {
       res.setHeader('Access-Control-Allow-Origin', '*');
@@ -25,4 +25,4 @@ module.exports = async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: 'health_failed', message: String(err) });
   }
-};
+}
