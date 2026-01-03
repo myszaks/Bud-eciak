@@ -87,6 +87,7 @@ module.exports = async (req, res) => {
   // Read Supabase envs; fall back to VITE_* names if only those are configured
   const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE;
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return res.status(500).json({ error: 'server_misconfigured', missing: {
@@ -95,11 +96,44 @@ module.exports = async (req, res) => {
     }});
   }
 
+  // Optional allowlist for RPCs that may use service role key for privileged reads
+  const SERVICE_ROLE_ALLOWED = new Set([
+    'get_user_emails_by_ids',
+    'check_email_exists',
+    'get_user_id_by_email',
+  ]);
+
+  // Basic parameter validation to reduce abuse surface
+  function validateParams(name, p) {
+    try {
+      if (name === 'get_user_emails_by_ids') {
+        const arr = p?.user_ids;
+        if (!Array.isArray(arr) || arr.length === 0) return { ok: false, reason: 'invalid_user_ids' };
+        if (arr.length > 50) return { ok: false, reason: 'too_many_ids' };
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        for (const id of arr) { if (typeof id !== 'string' || !uuidRe.test(id)) return { ok: false, reason: 'invalid_uuid' }; }
+        return { ok: true };
+      }
+      if (name === 'check_email_exists' || name === 'get_user_id_by_email') {
+        const email = p?.email_input || p?.email;
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (typeof email !== 'string' || email.length > 254 || !re.test(email)) return { ok: false, reason: 'invalid_email' };
+        return { ok: true };
+      }
+      return { ok: true };
+    } catch { return { ok: false, reason: 'invalid_params' }; }
+  }
+
+  const validity = validateParams(rpc, params);
+  if (!validity.ok) return res.status(400).json({ error: 'invalid_params', rpc, reason: validity.reason });
+
   try {
     const forwardUrl = `${SUPABASE_URL.replace(/\/$/, '')}/rpc/${rpc}`;
+    // Choose API key: default anon; use service role only for allowlisted RPCs with Authorization present
+    const useServiceRole = !!(SUPABASE_SERVICE_ROLE && SERVICE_ROLE_ALLOWED.has(rpc) && req.headers.authorization);
     const forwardHeaders = {
       'Content-Type': 'application/json',
-      apikey: SUPABASE_ANON_KEY,
+      apikey: useServiceRole ? SUPABASE_SERVICE_ROLE : SUPABASE_ANON_KEY,
     };
     // If client supplied an Authorization header, forward it so Supabase can enforce RLS by user.
     if (req.headers.authorization) forwardHeaders.Authorization = req.headers.authorization;
@@ -115,7 +149,8 @@ module.exports = async (req, res) => {
     const payload = isJson ? await r.json().catch(() => null) : await r.text().catch(() => null);
     const status = r.status === 204 ? 200 : r.status;
     if (status >= 400) {
-      return res.status(status).json({ error: 'supabase_rpc_error', status, rpc, upstream: payload });
+      const authForwarded = !!req.headers.authorization;
+      return res.status(status).json({ error: 'supabase_rpc_error', status, rpc, upstream: payload, authForwarded });
     }
     res.status(status).json(payload ?? {});
   } catch (err) {
