@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { withProfiler } from "../lib/perf";
 import { getExpenses, createExpense, updateExpense as apiUpdateExpense, deleteExpense as apiDeleteExpense } from "../lib/api";
 import CategoryAutocomplete from "./CategoryAutocomplete";
 import { inputClasses } from "../styles/tokens";
@@ -6,10 +7,54 @@ import { useToast } from "../contexts/ToastContext";
 import DatePickerField from "./DatePickerField";
 import { useModal } from "../contexts/ModalContext";
 
-export default function Expenses({ session, budget }) {
+const ExpenseRow = React.memo(function ExpenseRow({ expense, onStartEdit, onRequestDelete, canEdit }) {
+  return (
+    <div className="bg-dark-card border border-dark-border rounded-lg p-4 hover:border-red-500/50 transition-all">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-lg font-medium text-text truncate">{expense.name}</h3>
+            {expense.category && (
+              <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full">{expense.category}</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4 text-sm text-gray-400 mb-2">
+            <span className="flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              {expense.formattedDate}
+            </span>
+            <span className="text-xl font-bold text-red-400">-{expense.formattedAmount} zł</span>
+          </div>
+
+          {expense.description && <p className="text-sm text-gray-400 line-clamp-2">{expense.description}</p>}
+        </div>
+
+        {canEdit && (
+          <div className="flex gap-2">
+            <button onClick={() => onStartEdit(expense)} className="p-2 text-blue-400 hover:bg-dark-hover rounded-lg transition-colors" title="Edytuj">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+            <button onClick={() => onRequestDelete(expense)} className="p-2 text-red-400 hover:bg-dark-hover rounded-lg transition-colors" title="Usuń">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+function Expenses({ session, budget }) {
   const toast = useToast();
   const [expenses, setExpenses] = useState([]);
-  const [filteredExpenses, setFilteredExpenses] = useState([]);
+  
 
   // Formularz dodawania
   const [name, setName] = useState("");
@@ -40,37 +85,36 @@ export default function Expenses({ session, budget }) {
     fetchExpenses();
   }, [budget?.id]);
 
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredExpenses(expenses);
-      return;
-    }
+  // derive filtered + formatted expenses using useMemo to avoid extra state updates
+  const filteredExpenses = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    const matches = (expense) => {
+      if (!q) return true;
+      if (searchField === "name") return expense.name?.toLowerCase().includes(q);
+      if (searchField === "category") return expense.category?.toLowerCase().includes(q);
+      return true;
+    };
 
-    const query = searchQuery.toLowerCase().trim();
-    const filtered = expenses.filter((expense) => {
-      if (searchField === "name") {
-        return expense.name.toLowerCase().includes(query);
-      } else if (searchField === "category") {
-        return expense.category?.toLowerCase().includes(query);
-      }
-      return false;
-    });
-
-    setFilteredExpenses(filtered);
-  }, [searchQuery, searchField, expenses]);
+    return expenses
+      .filter(matches)
+      .map((expense) => ({
+        ...expense,
+        formattedDate: expense.date ? new Date(expense.date).toLocaleDateString("pl-PL") : "",
+        formattedAmount: parseFloat(expense.amount || 0).toFixed(2),
+      }));
+  }, [expenses, searchQuery, searchField]);
 
   async function fetchExpenses() {
     try {
       const { data, error } = await getExpenses(budget.id);
       if (error) throw error;
       setExpenses(data || []);
-      setFilteredExpenses(data || []);
     } catch (error) {
       console.error("Błąd pobierania wydatków:", error);
     }
   }
 
-  async function addExpense(e) {
+  const addExpense = useCallback(async (e) => {
     e.preventDefault();
 
     if (!name.trim()) {
@@ -107,7 +151,6 @@ export default function Expenses({ session, budget }) {
     };
 
     setExpenses((prev) => [tempRow, ...prev]);
-    setFilteredExpenses((prev) => [tempRow, ...prev]);
 
     try {
       const { data, error } = await createExpense({
@@ -123,7 +166,6 @@ export default function Expenses({ session, budget }) {
 
       // replace temp row with real row
       setExpenses((prev) => [data, ...prev.filter((r) => r.id !== tempId)]);
-      setFilteredExpenses((prev) => [data, ...prev.filter((r) => r.id !== tempId)]);
 
       setName("");
       setAmount("");
@@ -135,13 +177,30 @@ export default function Expenses({ session, budget }) {
     } catch (error) {
       // rollback temp row
       setExpenses((prev) => prev.filter((r) => r.id !== tempId));
-      setFilteredExpenses((prev) => prev.filter((r) => r.id !== tempId));
       console.error("Błąd dodawania wydatku:", error);
       toast.error("Nie udało się dodać wydatku: " + error.message);
     }
-  }
+  }, [name, amount, category, date, description, canEdit, createExpense, toast, budget?.id]);
 
-  function requestDeleteExpense(expense) {
+  const deleteExpense = useCallback(async (expenseId) => {
+    if (!canEdit) return;
+    // optimistic removal
+    const previous = expenses;
+    setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
+
+    try {
+      const { error } = await apiDeleteExpense(expenseId);
+      if (error) throw error;
+      toast.success("Wydatek został usunięty");
+    } catch (error) {
+      // rollback
+      setExpenses(previous);
+      console.error("Błąd usuwania wydatku:", error);
+      toast.error("Nie udało się usunąć wydatku: " + error.message);
+    }
+  }, [canEdit, expenses, apiDeleteExpense, toast]);
+
+  const requestDeleteExpense = useCallback((expense) => {
     if (!canEdit) {
       toast.warning("Nie masz uprawnień do usuwania wydatków");
       return;
@@ -162,29 +221,9 @@ export default function Expenses({ session, budget }) {
         await deleteExpense(expense.id);
       },
     });
-  }
+  }, [canEdit, openModal, deleteExpense, toast]);
 
-  async function deleteExpense(expenseId) {
-    if (!canEdit) return;
-    // optimistic removal
-    const previous = expenses;
-    setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
-    setFilteredExpenses((prev) => prev.filter((e) => e.id !== expenseId));
-
-    try {
-      const { error } = await apiDeleteExpense(expenseId);
-      if (error) throw error;
-      toast.success("Wydatek został usunięty");
-    } catch (error) {
-      // rollback
-      setExpenses(previous);
-      setFilteredExpenses(previous);
-      console.error("Błąd usuwania wydatku:", error);
-      toast.error("Nie udało się usunąć wydatku: " + error.message);
-    }
-  }
-
-  async function updateExpense(id) {
+  const updateExpense = useCallback(async (id) => {
     if (!canEdit) return;
     // optimistic update
     const previous = expenses;
@@ -197,7 +236,6 @@ export default function Expenses({ session, budget }) {
       description: editDescription.trim() || null,
     };
     setExpenses((prev) => prev.map((e) => (e.id === id ? updated : e)));
-    setFilteredExpenses((prev) => prev.map((e) => (e.id === id ? updated : e)));
 
     try {
       const { error } = await apiUpdateExpense(id, {
@@ -214,20 +252,19 @@ export default function Expenses({ session, budget }) {
     } catch (error) {
       // rollback
       setExpenses(previous);
-      setFilteredExpenses(previous);
       console.error("Błąd aktualizacji wydatku:", error);
       toast.error("Nie udało się zaktualizować wydatku: " + error.message);
     }
-  }
+  }, [canEdit, expenses, editName, editAmount, editCategory, editDate, editDescription, apiUpdateExpense, toast]);
 
-  function startEdit(expense) {
+  const startEdit = useCallback((expense) => {
     setEditingId(expense.id);
     setEditName(expense.name);
     setEditAmount(expense.amount);
     setEditCategory(expense.category || "");
     setEditDate(expense.date);
     setEditDescription(expense.description || "");
-  }
+  }, []);
 
   if (!budget) {
     return (
@@ -488,154 +525,74 @@ export default function Expenses({ session, budget }) {
         ) : (
           <div className="space-y-3">
             {filteredExpenses.map((expense) => (
-              <div
-                key={expense.id}
-                className="bg-dark-card border border-dark-border rounded-lg p-4 hover:border-red-500/50 transition-all"
-              >
+              <React.Fragment key={expense.id}>
                 {editingId === expense.id ? (
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      placeholder="Nazwa"
-                      className="w-full px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editAmount}
-                      onChange={(e) => setEditAmount(e.target.value)}
-                      placeholder="Kwota"
-                      className="w-full px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <CategoryAutocomplete
-                        value={editCategory}
-                        onChange={setEditCategory}
-                        budgetId={budget?.id}
-                        type="expense"
-                        placeholder="Kategoria"
+                  <div className="bg-dark-card border border-dark-border rounded-lg p-4 hover:border-red-500/50 transition-all">
+                    <div className="space-y-3">
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder="Nazwa"
                         className="w-full px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                       />
-                      <DatePickerField
-                        value={editDate || null}
-                        onChange={setEditDate}
-                        textFieldClassName={
-                          "px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        }
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editAmount}
+                        onChange={(e) => setEditAmount(e.target.value)}
+                        placeholder="Kwota"
+                        className="w-full px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                       />
-                    </div>
-                    <textarea
-                      value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
-                      placeholder="Opis"
-                      rows="2"
-                      className="w-full px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-none transition-all"
-                    />
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => updateExpense(expense.id)}
-                        className="flex-1 bg-red-500 text-white py-2.5 rounded-lg hover:bg-red-600 transition-colors font-medium shadow-lg shadow-red-500/30"
-                      >
-                        Zapisz
-                      </button>
-                      <button
-                        onClick={() => setEditingId(null)}
-                        className="flex-1 bg-dark-border text-text py-2.5 rounded-lg hover:bg-dark-hover transition-colors font-medium"
-                      >
-                        Anuluj
-                      </button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <CategoryAutocomplete
+                          value={editCategory}
+                          onChange={setEditCategory}
+                          budgetId={budget?.id}
+                          type="expense"
+                          placeholder="Kategoria"
+                          className="w-full px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        />
+                        <DatePickerField
+                          value={editDate || null}
+                          onChange={setEditDate}
+                          textFieldClassName={
+                            "px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                          }
+                        />
+                      </div>
+                      <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        placeholder="Opis"
+                        rows="2"
+                        className="w-full px-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-none transition-all"
+                      />
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => updateExpense(expense.id)}
+                          className="flex-1 bg-red-500 text-white py-2.5 rounded-lg hover:bg-red-600 transition-colors font-medium shadow-lg shadow-red-500/30"
+                        >
+                          Zapisz
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="flex-1 bg-dark-border text-text py-2.5 rounded-lg hover:bg-dark-hover transition-colors font-medium"
+                        >
+                          Anuluj
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="text-lg font-medium text-text truncate">
-                          {expense.name}
-                        </h3>
-                        {expense.category && (
-                          <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full">
-                            {expense.category}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-4 text-sm text-gray-400 mb-2">
-                        <span className="flex items-center gap-1.5">
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                            />
-                          </svg>
-                          {new Date(expense.date).toLocaleDateString("pl-PL")}
-                        </span>
-                        <span className="text-xl font-bold text-red-400">
-                          -{parseFloat(expense.amount).toFixed(2)} zł
-                        </span>
-                      </div>
-
-                      {expense.description && (
-                        <p className="text-sm text-gray-400 line-clamp-2">
-                          {expense.description}
-                        </p>
-                      )}
-                    </div>
-
-                    {canEdit && (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => startEdit(expense)}
-                          className="p-2 text-blue-400 hover:bg-dark-hover rounded-lg transition-colors"
-                          title="Edytuj"
-                        >
-                          <svg
-                            className="w-5 h-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                            />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => requestDeleteExpense(expense)}
-                          className="p-2 text-red-400 hover:bg-dark-hover rounded-lg transition-colors"
-                          title="Usuń"
-                        >
-                          <svg
-                            className="w-5 h-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <ExpenseRow
+                    expense={expense}
+                    onStartEdit={startEdit}
+                    onRequestDelete={requestDeleteExpense}
+                    canEdit={canEdit}
+                  />
                 )}
-              </div>
+              </React.Fragment>
             ))}
           </div>
         )}
@@ -675,3 +632,5 @@ export default function Expenses({ session, budget }) {
     </div>
   );
 }
+
+export default withProfiler(Expenses, "Expenses");

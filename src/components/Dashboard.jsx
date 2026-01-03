@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { withProfiler } from "../lib/perf";
 import { getExpensesInRange, getIncomeInRange, getRecentExpenses, getRecentIncome } from "../lib/api";
 import { useNavigate } from "react-router-dom";
 import MuiMonthPicker from "./MuiMonthPicker";
@@ -46,7 +47,7 @@ const CustomLegend = ({ payload }) => {
   );
 };
 
-export default function Dashboard({ session, budget }) {
+function Dashboard({ session, budget }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [expenses, setExpenses] = useState([]);
@@ -743,3 +744,5 @@ export default function Dashboard({ session, budget }) {
     </div>
   );
 }
+
+export default withProfiler(Dashboard, "Dashboard");

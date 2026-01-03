@@ -14,6 +14,10 @@ dayjs.locale("pl");
 
 const theme = createTheme({});
 
+if (import.meta.env.DEV) {
+  import("./lib/perf");
+}
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
