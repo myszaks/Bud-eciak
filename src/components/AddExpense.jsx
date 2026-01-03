@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { addExpenseForUser } from "../lib/api";
 
 export default function AddExpense({ userId, onAdded }) {
   const [title, setTitle] = useState("");
@@ -24,9 +24,7 @@ export default function AddExpense({ userId, onAdded }) {
 
   async function handleAdd() {
     if (!validateInput()) return;
-    const { error } = await supabase
-      .from("expenses")
-      .insert([{ user_id: userId, title: title.trim(), amount: parseFloat(amount) }]);
+    const { error } = await addExpenseForUser({ user_id: userId, title: title.trim(), amount: parseFloat(amount) });
     if (error) console.error(error);
     else {
       setTitle("");

@@ -1,6 +1,18 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabaseClient";
+import {
+  getBudgetById,
+  getBudgetAccessList,
+  getUserEmailsByIds,
+  updateBudgetById,
+  deleteBudgetForUser,
+  checkEmailExists,
+  getUserIdByEmail,
+  getBudgetAccessSingle,
+  addBudgetAccess,
+  deleteBudgetAccess,
+  updateBudgetAccess,
+} from "../lib/api";
 import { useToast } from "../contexts/ToastContext";
 import { useModal } from "../contexts/ModalContext";
 
@@ -66,10 +78,7 @@ export default function BudgetSettings({
     if (!budgetId || isDeleting) return [];
 
     try {
-      const { data: sharesData, error: sharesError } = await supabase
-        .from("budget_access")
-        .select("id, user_id, access_level, created_at")
-        .eq("budget_id", budgetId);
+      const { data: sharesData, error: sharesError } = await getBudgetAccessList(budgetId);
 
       if (sharesError || !sharesData || sharesData.length === 0) {
         if (sharesError) console.error("Błąd pobierania udostępnień:", sharesError);
@@ -78,10 +87,7 @@ export default function BudgetSettings({
 
       const userIds = sharesData.map((share) => share.user_id);
 
-      const { data: emailsData, error: emailError } = await supabase.rpc(
-        "get_user_emails_by_ids",
-        { user_ids: userIds }
-      );
+      const { data: emailsData, error: emailError } = await getUserEmailsByIds(userIds);
 
       if (emailError) {
         console.error("Błąd RPC get_user_emails_by_ids:", emailError);
@@ -137,11 +143,7 @@ export default function BudgetSettings({
 
       console.log("[BudgetSettings] Ładowanie budżetu:", budgetId);
 
-      const budgetPromise = supabase
-        .from("budgets")
-        .select("*")
-        .eq("id", budgetId)
-        .single();
+      const budgetPromise = getBudgetById(budgetId);
 
       // Fetch shares in parallel to budget fetch
       const sharesPromise = fetchSharesData();
@@ -246,13 +248,10 @@ export default function BudgetSettings({
     }
 
     try {
-      const { error } = await supabase
-        .from("budgets")
-        .update({
-          name: trimmedName,
-          description: trimmedDescription || null,
-        })
-        .eq("id", budgetId);
+      const { error } = await updateBudgetById(budgetId, {
+        name: trimmedName,
+        description: trimmedDescription || null,
+      });
 
       if (error) throw error;
 
@@ -294,11 +293,7 @@ export default function BudgetSettings({
   async function deleteBudget(budgetId) {
     try {
       setIsDeleting(true);
-      const { error } = await supabase
-        .from("budgets")
-        .delete()
-        .eq("id", budgetId);
-
+      const { error } = await deleteBudgetForUser(budgetId, session.user.id);
       if (error) throw error;
       onBudgetDeleted?.(budgetId);
       toast.success("Budżet został usunięty");
@@ -324,10 +319,7 @@ export default function BudgetSettings({
 
     setSharing(true);
     try {
-      const { data: emailExists, error: checkError } = await supabase.rpc(
-        "check_email_exists",
-        { email_input: trimmedEmail }
-      );
+      const { data: emailExists, error: checkError } = await checkEmailExists(trimmedEmail);
 
       if (checkError) {
         console.error("Błąd sprawdzania emaila:", checkError);
@@ -342,10 +334,7 @@ export default function BudgetSettings({
         return;
       }
 
-      const { data: userId, error: userError } = await supabase.rpc(
-        "get_user_id_by_email",
-        { email_input: trimmedEmail }
-      );
+      const { data: userId, error: userError } = await getUserIdByEmail(trimmedEmail);
 
       if (userError) throw userError;
 
@@ -359,31 +348,14 @@ export default function BudgetSettings({
         return;
       }
 
-      const { data: existingShare, error: existingShareError } =
-        await supabase
-          .from("budget_access")
-          .select("id")
-          .eq("budget_id", budgetId)
-          .eq("user_id", userId)
-          .maybeSingle();
-
+      const { data: existingShare, error: existingShareError } = await getBudgetAccessSingle(budgetId, userId);
       if (existingShareError) throw existingShareError;
-
       if (existingShare) {
         toast.warning("Ten budżet jest już udostępniony temu użytkownikowi");
         return;
       }
 
-      const { error: shareError } = await supabase
-        .from("budget_access")
-        .insert([
-          {
-            budget_id: budgetId,
-            user_id: userId,
-            access_level: shareLevel,
-          },
-        ]);
-
+      const { error: shareError } = await addBudgetAccess(budgetId, userId, shareLevel);
       if (shareError) throw shareError;
 
       setShareEmail("");
@@ -421,12 +393,7 @@ export default function BudgetSettings({
     if (!shareId) return;
 
     try {
-      const { error } = await supabase
-        .from("budget_access")
-        .delete()
-        .eq("id", shareId)
-        .eq("budget_id", budgetId);
-
+      const { error } = await deleteBudgetAccess(shareId, budgetId);
       if (error) throw error;
 
       await fetchShares();
@@ -455,12 +422,7 @@ export default function BudgetSettings({
     if (!shareId || !newLevel) return;
 
     try {
-      const { error } = await supabase
-        .from("budget_access")
-        .update({ access_level: newLevel })
-        .eq("id", shareId)
-        .eq("budget_id", budgetId);
-
+      const { error } = await updateBudgetAccess(shareId, budgetId, newLevel);
       if (error) throw error;
 
       await fetchShares();

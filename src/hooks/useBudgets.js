@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { fetchBudgetsForUser, createBudgetForUser, deleteBudgetForUser } from "../lib/api";
 
 export function useBudgets(session, triggerRefresh = 0) {
   const [budgets, setBudgets] = useState([]);
@@ -14,23 +15,12 @@ export function useBudgets(session, triggerRefresh = 0) {
 
     try {
       setLoading(true);
+      const { ownedRes, sharedRes } = await fetchBudgetsForUser(session.user.id);
 
-      // Fetch owned and shared in parallel and limit columns to needed fields
-      const ownedPromise = supabase
-        .from("budgets")
-        .select("id,name,description,created_at,owner_id")
-        .eq("owner_id", session.user.id)
-        .order("created_at", { ascending: false });
-
-      const sharedPromise = supabase
-        .from("budget_access")
-        .select(`budget_id,access_level,budgets(id,name,description,created_at,owner_id)`)
-        .eq("user_id", session.user.id);
-
-      const [
-        { data: ownedBudgets, error: ownedError },
-        { data: sharedAccess, error: sharedError },
-      ] = await Promise.all([ownedPromise, sharedPromise]);
+      const ownedBudgets = ownedRes?.data;
+      const ownedError = ownedRes?.error;
+      const sharedAccess = sharedRes?.data;
+      const sharedError = sharedRes?.error;
 
       if (ownedError) {
         console.error("[useBudgets] Error fetching owned budgets:", ownedError);
@@ -75,15 +65,7 @@ export function useBudgets(session, triggerRefresh = 0) {
     if (!session?.user?.id) return null;
 
     try {
-      const { data, error } = await supabase
-        .from("budgets")
-        .insert([{ 
-          name, 
-          description: description || null,
-          owner_id: session.user.id 
-        }])
-        .select()
-        .single();
+      const { data, error } = await createBudgetForUser(session.user.id, name, description);
 
       if (error) throw error;
 
@@ -100,11 +82,7 @@ export function useBudgets(session, triggerRefresh = 0) {
     if (!session?.user?.id) return;
 
     try {
-      const { error } = await supabase
-        .from("budgets")
-        .delete()
-        .eq("id", budgetId)
-        .eq("owner_id", session.user.id);
+      const { error } = await deleteBudgetForUser(budgetId, session.user.id);
 
       if (error) throw error;
 

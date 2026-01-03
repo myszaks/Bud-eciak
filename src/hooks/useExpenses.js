@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { getExpensesByUser, addExpenseForUser } from "../lib/api";
 
 export default function useExpenses(userId) {
   const [expenses, setExpenses] = useState([]);
@@ -9,11 +10,7 @@ export default function useExpenses(userId) {
   const fetchExpenses = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from("expenses")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
+    const { data, error } = await getExpensesByUser(userId);
     if (error) setError(error);
     else setExpenses(data ?? []);
     setLoading(false);
@@ -54,9 +51,7 @@ export default function useExpenses(userId) {
 
   async function addExpense({ title, amount }) {
     if (!userId) throw new Error("Brak userId");
-    const { error } = await supabase
-      .from("expenses")
-      .insert([{ user_id: userId, title, amount: parseFloat(amount) }]);
+    const { error } = await addExpenseForUser({ user_id: userId, title, amount: parseFloat(amount) });
     if (error) throw error;
     // fetchExpenses() zostanie wywołane przez subskrypcję
   }

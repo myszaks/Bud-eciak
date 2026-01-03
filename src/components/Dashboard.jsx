@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { getExpensesInRange, getIncomeInRange, getRecentExpenses, getRecentIncome } from "../lib/api";
 import { useNavigate } from "react-router-dom";
 import MuiMonthPicker from "./MuiMonthPicker";
 import MuiBarChart from "./charts/MuiBarChart";
@@ -80,38 +80,11 @@ export default function Dashboard({ session, budget }) {
         .split("T")[0];
 
       // Pobierz wszystkie dane z wybranego miesiąca
-      const [
-        expensesResponse,
-        incomeResponse,
-        recentExpensesResponse,
-        recentIncomeResponse,
-      ] = await Promise.all([
-        supabase
-          .from("expenses")
-          .select("*")
-          .eq("budget_id", budget.id)
-          .gte("date", startOfMonth)
-          .lte("date", endOfMonth)
-          .order("date", { ascending: false }),
-        supabase
-          .from("income")
-          .select("*")
-          .eq("budget_id", budget.id)
-          .gte("date", startOfMonth)
-          .lte("date", endOfMonth)
-          .order("date", { ascending: false }),
-        supabase
-          .from("expenses")
-          .select("*")
-          .eq("budget_id", budget.id)
-          .order("date", { ascending: false })
-          .limit(5),
-        supabase
-          .from("income")
-          .select("*")
-          .eq("budget_id", budget.id)
-          .order("date", { ascending: false })
-          .limit(5),
+      const [expensesResponse, incomeResponse, recentExpensesResponse, recentIncomeResponse] = await Promise.all([
+        getExpensesInRange(budget.id, startOfMonth, endOfMonth),
+        getIncomeInRange(budget.id, startOfMonth, endOfMonth),
+        getRecentExpenses(budget.id, 5),
+        getRecentIncome(budget.id, 5),
       ]);
 
       if (expensesResponse.error) throw expensesResponse.error;

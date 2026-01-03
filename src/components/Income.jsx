@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { getIncome, createIncome, updateIncome, deleteIncome as apiDeleteIncome } from "../lib/api";
 import CategoryAutocomplete from "./CategoryAutocomplete";
 import { useToast } from "../contexts/ToastContext";
 import { useModal } from "../contexts/ModalContext";
@@ -42,12 +42,7 @@ export default function Income({ session, budget }) {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("income")
-        .select("*")
-        .eq("budget_id", budget.id)
-        .order("date", { ascending: false });
-
+      const { data, error } = await getIncome(budget.id);
       if (error) throw error;
       setIncome(data || []);
     } catch (error) {
@@ -112,20 +107,15 @@ export default function Income({ session, budget }) {
     setIncome((prev) => [tempRow, ...prev]);
 
     try {
-      const { data, error } = await supabase
-        .from("income")
-        .insert([
-          {
-            budget_id: budget.id,
-            name: name.trim(),
-            amount: parseFloat(amount),
-            date,
-            description: description.trim() || null,
-            category: category.trim() || null,
-          },
-        ])
-        .select()
-        .single();
+
+      const { data, error } = await createIncome({
+        budget_id: budget.id,
+        name: name.trim(),
+        amount: parseFloat(amount),
+        date,
+        description: description.trim() || null,
+        category: category.trim() || null,
+      });
 
       if (error) throw error;
 
@@ -161,16 +151,13 @@ export default function Income({ session, budget }) {
     }
 
     try {
-      const { error } = await supabase
-        .from("income")
-        .update({
-          name: editName.trim(),
-          amount: parseFloat(editAmount),
-          date: editDate,
-          description: editDescription.trim() || null,
-          category: editCategory.trim() || null,
-        })
-        .eq("id", id);
+      const { error } = await updateIncome(id, {
+        name: editName.trim(),
+        amount: parseFloat(editAmount),
+        date: editDate,
+        description: editDescription.trim() || null,
+        category: editCategory.trim() || null,
+      });
 
       if (error) throw error;
 
@@ -212,10 +199,7 @@ export default function Income({ session, budget }) {
     setIncome((prev) => prev.filter((i) => i.id !== incomeId));
 
     try {
-      const { error } = await supabase
-        .from("income")
-        .delete()
-        .eq("id", incomeId);
+      const { error } = await apiDeleteIncome(incomeId);
       if (error) throw error;
       toast.success("Wpływ został usunięty");
     } catch (error) {

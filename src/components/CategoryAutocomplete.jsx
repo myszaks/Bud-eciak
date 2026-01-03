@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { getCategories } from "../lib/api";
 
 export default function CategoryAutocomplete({ 
   value, 
@@ -58,25 +58,15 @@ export default function CategoryAutocomplete({
 
       try {
         setLoading(true);
-        const table = type === "expense" ? "expenses" : "income";
-        const { data, error } = await supabase
-          .from(table)
-          .select("category")
-          .eq("budget_id", budgetId)
-          .not("category", "is", null)
-          .ilike("category", `%${sanitizedSearch}%`)
-          .limit(10);
-
+        const { data, error } = await getCategories(budgetId, type, sanitizedSearch, 10);
         if (error) throw error;
-
         if (!data) {
           setSuggestions([]);
           setShowSuggestions(false);
           return;
         }
+        const uniqueCategories = [...new Set(data.map((item) => item.category))];
 
-        const uniqueCategories = [...new Set(data.map(item => item.category))];
-        
         setSuggestions(uniqueCategories);
         setShowSuggestions(uniqueCategories.length > 0);
       } catch (error) {

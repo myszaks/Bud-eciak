@@ -6,6 +6,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { supabase } from "./lib/supabaseClient";
+import { getBudgetById, getBudgetAccessSingle } from "./lib/api";
 import Login from "./components/Login";
 import Navigation from "./components/Navigation";
 import Dashboard from "./components/Dashboard";
@@ -45,22 +46,13 @@ function AppContent() {
         if (currentSession) {
           const savedBudgetId = localStorage.getItem("selectedBudgetId");
           if (savedBudgetId) {
-            const { data: budget, error: budgetError } = await supabase
-              .from("budgets")
-              .select("*")
-              .eq("id", savedBudgetId)
-              .single();
+            const { data: budget, error: budgetError } = await getBudgetById(savedBudgetId);
 
             if (!budgetError && budget && isMounted) {
               if (budget.owner_id === currentSession.user.id) {
                 setSelectedBudget({ ...budget, is_owner: true });
               } else {
-                const { data: access } = await supabase
-                  .from("budget_access")
-                  .select("access_level")
-                  .eq("budget_id", savedBudgetId)
-                  .eq("user_id", currentSession.user.id)
-                  .single();
+                const { data: access } = await getBudgetAccessSingle(savedBudgetId, currentSession.user.id);
 
                 if (access && isMounted) {
                   setSelectedBudget({

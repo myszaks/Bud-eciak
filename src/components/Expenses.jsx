@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { getExpenses, createExpense, updateExpense as apiUpdateExpense, deleteExpense as apiDeleteExpense } from "../lib/api";
 import CategoryAutocomplete from "./CategoryAutocomplete";
+import { inputClasses } from "../styles/tokens";
 import { useToast } from "../contexts/ToastContext";
 import DatePickerField from "./DatePickerField";
 import { useModal } from "../contexts/ModalContext";
@@ -60,12 +61,7 @@ export default function Expenses({ session, budget }) {
 
   async function fetchExpenses() {
     try {
-      const { data, error } = await supabase
-        .from("expenses")
-        .select("*")
-        .eq("budget_id", budget.id)
-        .order("date", { ascending: false });
-
+      const { data, error } = await getExpenses(budget.id);
       if (error) throw error;
       setExpenses(data || []);
       setFilteredExpenses(data || []);
@@ -114,20 +110,14 @@ export default function Expenses({ session, budget }) {
     setFilteredExpenses((prev) => [tempRow, ...prev]);
 
     try {
-      const { data, error } = await supabase
-        .from("expenses")
-        .insert([
-          {
-            budget_id: budget.id,
-            name: name.trim(),
-            amount: parseFloat(amount),
-            category: category.trim() || null,
-            date,
-            description: description.trim() || null,
-          },
-        ])
-        .select()
-        .single();
+      const { data, error } = await createExpense({
+        budget_id: budget.id,
+        name: name.trim(),
+        amount: parseFloat(amount),
+        category: category.trim() || null,
+        date,
+        description: description.trim() || null,
+      });
 
       if (error) throw error;
 
@@ -182,7 +172,7 @@ export default function Expenses({ session, budget }) {
     setFilteredExpenses((prev) => prev.filter((e) => e.id !== expenseId));
 
     try {
-      const { error } = await supabase.from("expenses").delete().eq("id", expenseId);
+      const { error } = await apiDeleteExpense(expenseId);
       if (error) throw error;
       toast.success("Wydatek został usunięty");
     } catch (error) {
@@ -210,13 +200,13 @@ export default function Expenses({ session, budget }) {
     setFilteredExpenses((prev) => prev.map((e) => (e.id === id ? updated : e)));
 
     try {
-      const { error } = await supabase.from("expenses").update({
+      const { error } = await apiUpdateExpense(id, {
         name: editName.trim(),
         amount: parseFloat(editAmount),
         category: editCategory.trim() || null,
         date: editDate,
         description: editDescription.trim() || null,
-      }).eq("id", id);
+      });
 
       if (error) throw error;
       setEditingId(null);
@@ -307,7 +297,7 @@ export default function Expenses({ session, budget }) {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="np. Zakupy spożywcze"
-                  className="w-full px-4 py-2.5 bg-bg border border-primary rounded-lg text-text focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+                  className={inputClasses}
                   required
                 />
               </div>
@@ -321,7 +311,7 @@ export default function Expenses({ session, budget }) {
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
-                  className="w-full px-4 py-2.5 bg-bg border border-primary rounded-lg text-text focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+                  className={inputClasses}
                   required
                 />
               </div>

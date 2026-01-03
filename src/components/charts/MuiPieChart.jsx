@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Card } from "@mui/material";
+import Card from "../ui/Card";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
 
 function formatPLN(value) {
