@@ -130,13 +130,13 @@ module.exports = async (req, res) => {
   try {
     const forwardUrl = `${SUPABASE_URL.replace(/\/$/, '')}/rpc/${rpc}`;
     // Choose API key: default anon; use service role only for allowlisted RPCs with Authorization present
-    const useServiceRole = !!(SUPABASE_SERVICE_ROLE && SERVICE_ROLE_ALLOWED.has(rpc) && req.headers.authorization);
+    const useServiceRole = !!(SUPABASE_SERVICE_ROLE && SERVICE_ROLE_ALLOWED.has(rpc));
     const forwardHeaders = {
       'Content-Type': 'application/json',
       apikey: useServiceRole ? SUPABASE_SERVICE_ROLE : SUPABASE_ANON_KEY,
     };
     // If client supplied an Authorization header, forward it so Supabase can enforce RLS by user.
-    if (req.headers.authorization) forwardHeaders.Authorization = req.headers.authorization;
+    if (req.headers.authorization && !useServiceRole) forwardHeaders.Authorization = req.headers.authorization;
 
     const r = await fetch(forwardUrl, {
       method: 'POST',
