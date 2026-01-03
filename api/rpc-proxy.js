@@ -77,11 +77,15 @@ module.exports = async (req, res) => {
   }
 
   // Forward to Supabase RPC endpoint. Prefer server env vars to avoid exposing service keys in client.
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+  // Read Supabase envs; fall back to VITE_* names if only those are configured
+  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    return res.status(500).json({ error: 'server_misconfigured' });
+    return res.status(500).json({ error: 'server_misconfigured', missing: {
+      SUPABASE_URL: !SUPABASE_URL,
+      SUPABASE_ANON_KEY: !SUPABASE_ANON_KEY
+    }});
   }
 
   try {
