@@ -197,7 +197,7 @@ function Dashboard({ session, budget }) {
   }
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto px-4 pb-10">
+    <div className="space-y-8 mx-auto px-4 pb-10">
       {/* Filtr miesiąca */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
         <label className="block text-base font-semibold text-primary mb-2">
