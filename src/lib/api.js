@@ -1,5 +1,103 @@
 import { supabase } from "./supabaseClient";
 
+// Simple in-memory client-side token-bucket throttle.
+// This prevents accidental client storms and makes testing rate-limits
+// locally easier. IMPORTANT: this does NOT replace server-side limits.
+// Keep server/edge limits (Cloudflare, Supabase Edge Functions, DB RLS)
+// for real protection — see docs/rate-limiting.md for Cloudflare examples.
+
+const CLIENT_ID_KEY = "budzeciak_client_id";
+const tokenBuckets = new Map();
+
+function getClientId() {
+  try {
+    if (typeof localStorage !== "undefined") {
+      let id = localStorage.getItem(CLIENT_ID_KEY);
+      if (!id) {
+        id = (crypto && crypto.randomUUID && crypto.randomUUID()) || `${Date.now()}-${Math.random()}`;
+        localStorage.setItem(CLIENT_ID_KEY, id);
+      }
+      return id;
+    }
+  } catch (e) {
+    // localStorage may be unavailable in some environments
+  }
+  // Fallback to a per-process id
+  if (!globalThis.__BUDZECIAK_CLIENT_ID) globalThis.__BUDZECIAK_CLIENT_ID = `${Date.now()}-${Math.random()}`;
+  return globalThis.__BUDZECIAK_CLIENT_ID;
+}
+
+function getBucket(clientId, { rate = 5, burst = 10 } = {}) {
+  let b = tokenBuckets.get(clientId);
+  const now = Date.now();
+  if (!b) {
+    b = { tokens: burst, lastRefill: now, rate, burst };
+    tokenBuckets.set(clientId, b);
+    return b;
+  }
+  // Update rate/burst if changed
+  b.rate = rate;
+  b.burst = burst;
+  // Refill
+  const elapsedSec = Math.max(0, (now - b.lastRefill) / 1000);
+  const refill = elapsedSec * b.rate;
+  if (refill > 0) {
+    b.tokens = Math.min(b.burst, b.tokens + refill);
+    b.lastRefill = now;
+  }
+  return b;
+}
+
+function consumeToken(bucket) {
+  if (bucket.tokens >= 1) {
+    bucket.tokens -= 1;
+    return true;
+  }
+  return false;
+}
+
+async function rpcWithThrottle(rpcName, params, opts = {}) {
+  try {
+    const clientId = getClientId();
+    const bucket = getBucket(clientId, opts);
+    if (!consumeToken(bucket)) {
+      return { data: null, error: new Error("Rate limit exceeded (client)") };
+    }
+  } catch (err) {
+    // Fail open if throttle helpers error
+  }
+  return supabase.rpc(rpcName, params);
+}
+
+// Server-side proxied RPC helper: POSTs to the serverless proxy which applies
+// server-side rate limits. The proxy will forward client Authorization if present.
+async function serverRpc(rpcName, params) {
+  try {
+    const clientId = getClientId();
+    const headers = { 'Content-Type': 'application/json', 'x-client-id': clientId };
+    // if supabase client exposes a session, forward its access token so RLS is enforced
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.access_token) headers.Authorization = `Bearer ${data.session.access_token}`;
+    } catch (e) {
+      // ignore in non-browser environments
+    }
+
+    const res = await fetch('/api/rpc-proxy', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ rpc: rpcName, params }),
+    });
+
+    const json = await res.json().catch(() => null);
+    // Normalize response shape like Supabase client: return { data, error }
+    if (res.status >= 400) return { data: null, error: json || { message: 'server_rpc_error' } };
+    return { data: json, error: null };
+  } catch (err) {
+    return { data: null, error: err };
+  }
+}
+
 export async function getExpenses(budgetId) {
   if (!budgetId) return { data: [], error: null };
   return supabase
@@ -72,11 +170,12 @@ export async function getBudgetAccessForUser(budgetId, userId) {
 
 // RPC helpers
 export async function checkEmailExists(email) {
-  return supabase.rpc("check_email_exists", { email_input: email });
+  // Use server-side proxy to enforce global rate-limits
+  return serverRpc("check_email_exists", { email_input: email });
 }
 
 export async function getUserIdByEmail(email) {
-  return supabase.rpc("get_user_id_by_email", { email_input: email });
+  return serverRpc("get_user_id_by_email", { email_input: email });
 }
 
 // Budget access helpers
@@ -99,7 +198,7 @@ export async function getBudgetAccessList(budgetId) {
 
 export async function getUserEmailsByIds(userIds) {
   if (!userIds || !Array.isArray(userIds) || userIds.length === 0) return { data: [], error: null };
-  return supabase.rpc("get_user_emails_by_ids", { user_ids: userIds });
+  return serverRpc("get_user_emails_by_ids", { user_ids: userIds });
 }
 
 export async function updateBudgetById(budgetId, payload) {
