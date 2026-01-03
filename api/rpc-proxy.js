@@ -128,7 +128,8 @@ export default async function handler(req, res) {
   if (!validity.ok) return res.status(400).json({ error: 'invalid_params', rpc, reason: validity.reason });
 
   try {
-    const forwardUrl = `${SUPABASE_URL.replace(/\/$/, '')}/rpc/${rpc}`;
+    // Supabase PostgREST RPC endpoint is under /rest/v1/rpc/<function>
+    const forwardUrl = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/rpc/${rpc}`;
     // Choose API key: default anon; use service role only for allowlisted RPCs with Authorization present
     const useServiceRole = !!(SUPABASE_SERVICE_ROLE && SERVICE_ROLE_ALLOWED.has(rpc));
     const forwardHeaders = {
