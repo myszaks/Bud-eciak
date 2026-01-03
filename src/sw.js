@@ -1,4 +1,4 @@
-const CACHE_NAME = "budzet-static-v1";
+const CACHE_NAME = "budzet-static-v2";
 const STATIC_ASSETS = ["/", "/index.html"];
 
 self.addEventListener("install", (event) => {
@@ -36,6 +36,12 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(() => caches.match("/index.html"))
     );
+    return;
+  }
+
+  // Do not cache JS assets to avoid stale chunk mismatches after deploy
+  if (reqUrl.pathname.startsWith('/assets/') || reqUrl.pathname.endsWith('.js')) {
+    event.respondWith(fetch(event.request).catch(() => caches.match('/index.html')));
     return;
   }
 

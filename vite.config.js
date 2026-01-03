@@ -11,19 +11,10 @@ export default defineConfig(({ command, mode }) => ({
   build: {
     // Disable source maps in production to avoid exposing source code
     sourcemap: false,
-    // Improve chunking to avoid very large vendor bundles
+    // Keep default Rollup chunking; manualChunks removed to avoid potential CJS wrapping issues
     rollupOptions: {
       output: {
-        chunkSizeWarningLimit: 1200, // increase warning to 1.2MB; tune as needed
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom')) return 'vendor_react';
-            if (id.includes('@mui') || id.includes('@emotion')) return 'vendor_mui';
-            if (id.includes('recharts') || id.includes('chart')) return 'vendor_charts';
-            if (id.includes('lodash')) return 'vendor_lodash';
-            return 'vendor_misc';
-          }
-        },
+        chunkSizeWarningLimit: 1200,
       },
     },
     // Use esbuild for minification to avoid requiring optional terser dependency
